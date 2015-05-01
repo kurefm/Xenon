@@ -1,0 +1,8 @@
+#ignore python binary file
+*.pyc
+*.pyo
+*.pyd
+#also can write as *.py[cod]
+
+#ignore pychram directory
+.idea
