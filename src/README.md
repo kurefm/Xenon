@@ -63,4 +63,4 @@ def get(self, url, params={}, headers={}):
     :return:it with return a response object
     """
 ```
-在Pycharm中快速插入该格式注释的方法是在函数的下一行输入三个双引号（半角）"，再按回车，即可自动识别函数的参数并建立格式的注释。  
+在PyCharm中快速插入该格式注释的方法是在函数的下一行输入三个双引号（半角）"，再按回车，即可自动识别函数的参数并建立格式的注释。  
