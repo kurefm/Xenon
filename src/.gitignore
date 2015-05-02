@@ -1,8 +1,11 @@
-#ignore python binary file
+# ignore python binary file
 *.pyc
 *.pyo
 *.pyd
-#also can write as *.py[cod]
+# also can write as *.py[cod]
 
-#ignore pychram directory
+# ignore cookie file
+*.cookie
+
+# ignore pychram directory
 .idea
