@@ -118,22 +118,6 @@ class Login(object):
         else:
             return False
 
-    def search(self, key, type='weibo'):
-        """
-        Use key to search something
-        :param key:witch key do you want to search.
-        :param type:witch type do you want to search, it can be weibo,user,pic,apps in now.
-        :return:it with return a response object
-        """
-        key_encoded = urllib.quote(urllib.quote(key))
-        key_search_url = '{search_url}/{type}/{key_encoded}'.format(
-            search_url=self._SEARCH_URL,
-            type=type,
-            key_encoded=key_encoded
-        )
-        return self.get(key_search_url, headers={'Referer': self._SEARCH_URL})
-
-
     def get(self, url, params={}, headers={}):
         """
         Use get method to request page
@@ -156,6 +140,21 @@ class Login(object):
         :return:it with return a response object
         """
         return self.__get_response(url, params, headers)
+
+    def search(self, key, type='weibo'):
+        """
+        Use key to search something
+        :param key:witch key do you want to search.
+        :param type:witch type do you want to search, it can be weibo,user,pic,apps in now.
+        :return:it with return a response object
+        """
+        key_encoded = urllib.quote(urllib.quote(key))
+        key_search_url = '{search_url}/{type}/{key_encoded}'.format(
+            search_url=self._SEARCH_URL,
+            type=type,
+            key_encoded=key_encoded
+        )
+        return self.get(key_search_url, headers={'Referer': self._SEARCH_URL})
 
 
 if __name__ == '__main__':
