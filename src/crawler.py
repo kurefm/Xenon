@@ -9,6 +9,7 @@ import base64
 import json
 import re
 import binascii
+import os
 from packages import rsa
 
 
@@ -58,7 +59,7 @@ class Login(object):
         }
 
         # cookie保存文件
-        self.__cookieFile = r'cookies\[' + username + '].cookie'
+        self.__cookieFile = os.path.join('cookies', '[{username}].cookie'.format(username=username))
         # 创建cookie，带保存文件
         self.__cookie = cookielib.MozillaCookieJar(self.__cookieFile)
         # 用cookiejar创建build_opener
@@ -71,7 +72,7 @@ class Login(object):
         try:
             self.__cookie.load()
         # 文件不存在
-        except IOError, ioe:
+        except IOError as ioe:
             print 'cookie not exist'
             self.relogin(username, password)
         # 文件存在，检测cookie可用性
@@ -96,7 +97,11 @@ class Login(object):
         return urllib2.urlopen(request)
 
     def __prelogin(self, username, password):
-        # 预登陆，获取登陆信息
+        """
+        预登陆，获取登陆信息
+        :param username:
+        :param password:
+        """
         su = base64.b64encode(urllib.quote(username))
         self.__prelogin_params['su'] = su
         html = self.get(self._PRE_LOGIN_URL, self.__prelogin_params, {'Referer': self._LOGIN_ROOT_URL}).read()
@@ -116,7 +121,11 @@ class Login(object):
         return binascii.b2a_hex(password)
 
     def relogin(self, username, password):
-        # 重登录，执行整个登陆流程
+        """
+        重登录，执行整个登陆流程
+        :param username:
+        :param password:
+        """
         self.__prelogin(username, password)
         html = self.post(self._LOGIN_URL, self.__login_params, {'Referer': self._LOGIN_ROOT_URL}).read()
         urls = re.findall(r'\"((http|https)[\s\S]+?)\"', html)
@@ -126,6 +135,10 @@ class Login(object):
         self.__cookie.save()
 
     def check_login_state(self):
+        """
+        检查登陆是否成功
+        :return: 成功返回True，否则返回False
+        """
         if self.get(WEIBO_URL).geturl().find(WEIBO_URL) == -1:
             return False
         elif self.get(WEIBO_URL).geturl().find(WEIBO_URL) == 0:
