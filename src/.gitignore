@@ -9,3 +9,6 @@
 
 # ignore pychram directory
 .idea
+
+# ignore account list
+accounts
