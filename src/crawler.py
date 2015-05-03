@@ -11,7 +11,7 @@ import re
 import binascii
 import os
 from packages import rsa
-from exceptions import *
+from errors import CookieTypeError
 
 
 class HttpOperation(object):
@@ -132,6 +132,7 @@ class Login(HttpOperation):
             'returntype': 'IFRAME',
             'setdomain': '1'
         }
+        
         super(Login, self).__init__(os.path.join('cookies','[%s].cookie' % username))
 
         try:
