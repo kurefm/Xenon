@@ -5,6 +5,8 @@ import sys
 sys.path.append('../3rd/')
 sys.path.append('../')
 
+import requests
+
 import urllib
 import urllib2
 import cookielib
@@ -160,6 +162,6 @@ class Login(object):
 if __name__ == '__main__':
     l = Login('h6hummer@live.cn', 'sina281206')
 
-
+    r=requests.get('www.baidu.com')
 
 

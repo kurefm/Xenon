@@ -13,10 +13,9 @@ import os
 from packages import rsa
 
 
+
 class Login(object):
-    """
-    The class use to login weibo
-    """
+    """The class use to login weibo"""
     _CLIENT = 'ssologin.js(v1.4.15)'
     _LOGIN_ROOT_URL = 'http://login.sina.com.cn/'
     _PRE_LOGIN_URL = _LOGIN_ROOT_URL + 'sso/prelogin.php'
@@ -98,7 +97,7 @@ class Login(object):
 
     def __prelogin(self, username, password):
         """
-        预登陆，获取登陆信息
+        predictive login, get the information to use in login
         :param username:
         :param password:
         """
@@ -122,9 +121,9 @@ class Login(object):
 
     def relogin(self, username, password):
         """
-        重登录，执行整个登陆流程
-        :param username:
-        :param password:
+        if login failed, you can use this method to login again
+        :param username: username
+        :param password: password
         """
         self.__prelogin(username, password)
         html = self.post(self._LOGIN_URL, self.__login_params, {'Referer': self._LOGIN_ROOT_URL}).read()
@@ -136,8 +135,8 @@ class Login(object):
 
     def check_login_state(self):
         """
-        检查登陆是否成功
-        :return: 成功返回True，否则返回False
+        check login
+        :return: if login success return True, else return False
         """
         if self.get(WEIBO_URL).geturl().find(WEIBO_URL) == -1:
             return False
@@ -171,4 +170,8 @@ class Login(object):
 
 
 if __name__ == '__main__':
-    l = Login('h6hummer@live.cn', 'sina281206')
+    account = None
+    with open('accounts', 'rb') as f:
+        account = f.readline().split(',')
+    if account:
+        l = Login(account[0],account[1])
