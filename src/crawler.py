@@ -11,10 +11,11 @@ import re
 import binascii
 import os
 from packages import rsa
+from packages import requests
 from errors import CookieTypeError
 
 
-class HttpOperation(object):
+class HttpOperation(requests.Session):
     def __init__(self, cookie_filename=None, cookie_type='Mozilla', default_headers=None):
         """
         Initialize default http header and cookie
@@ -26,58 +27,36 @@ class HttpOperation(object):
             'User-Agent': 'Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.90 Safari/537.36',
             'Accept-Language': 'zh-CN'
         } if not default_headers else default_headers
-        self._cookie = None
+        self._cookie_filename = cookie_filename
+        super(HttpOperation, self).__init__()
+
+        # 添加默认http头
+        self.headers.update(self._default_headers)
 
         # cookie保存文件
         if cookie_filename:
-            self._cookie_filename = cookie_filename
-
             # 创建cookie，带保存文件
             if cookie_type.lower() == 'mozilla':
-                self._cookie = cookielib.MozillaCookieJar(self._cookie_filename)
+                self.cookies = cookielib.MozillaCookieJar(cookie_filename)
             elif cookie_type.lower() == 'lwp':
-                self._cookie = cookielib.LWPCookieJar(self._cookie_filename)
+                self.cookies = cookielib.LWPCookieJar(cookie_filename)
             else:
                 raise CookieTypeError("Unsupported cookie type: %s" % cookie_type)
         else:
-            self._cookie = cookielib.CookieJar()
+            self.cookies = cookielib.CookieJar()
 
-
-        # 用cookiejar创建build_opener
-        _opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(self._cookie))
-        # 将opener装入urllib2
-        urllib2.install_opener(_opener)
-
-
-    def __get_response(self, url, params={}, headers={}):
-        data = None
-
-        # 对参数编码
-        if params:
-            data = urllib.urlencode(params)
-        # 创建Request对象
-        request = urllib2.Request(url, data, headers, )
-        # 添加默认Header
-        for (key, value) in self._default_headers.items():
-            if not request.headers.has_key(key):
-                request.headers[key] = value
-        # 打开url连接
-        return urllib2.urlopen(request)
-
-    def get(self, url, params={}, headers={}):
+    def get(self, url, params={}, headers={}, timeout=HTTP_TIMEOUT, **kwargs):
         """
         Use get method to request page
-        :param url:witch url do you want to request
-        :param params:append params in request
-        :param headers:append headers in request
-        :return:it with return a response object
+        :param url: witch url do you want to request
+        :param params: append params in request
+        :param headers: append headers in request
+        :param timeout:
+        :return: it with return a response object
         """
-        if params:
-            url = '{url}?{encoded_params}'. \
-                format(url=url, encoded_params=urllib.urlencode(params))
-        return self.__get_response(url, headers=headers)
+        return super(HttpOperation, self).get(url, params=params, headers=headers, timeout=timeout, **kwargs)
 
-    def post(self, url, params={}, headers={}):
+    def post(self, url, params={}, headers={}, timeout=HTTP_TIMEOUT, **kwargs):
         """
         Use post method to request page
         :param url:witch url do you want to request
@@ -85,13 +64,15 @@ class HttpOperation(object):
         :param headers:append headers in request
         :return:it with return a response object
         """
-        return self.__get_response(url, params, headers)
+        return super(HttpOperation, self).post(url, params=params, headers=headers, timeout=timeout, **kwargs)
 
     def load_cookie(self, filename=None, ignore_discard=False, ignore_expires=False):
-        self._cookie.load(filename, ignore_discard, ignore_expires)
+        if self._cookie_filename:
+            self.cookies.load(filename, ignore_discard, ignore_expires)
 
     def save_cookie(self, filename=None, ignore_discard=False, ignore_expires=False):
-        self._cookie.save(filename, ignore_discard, ignore_expires)
+        if self._cookie_filename:
+            self.cookies.save(filename, ignore_discard, ignore_expires)
 
 
 class Login(HttpOperation):
@@ -132,8 +113,8 @@ class Login(HttpOperation):
             'returntype': 'IFRAME',
             'setdomain': '1'
         }
-        
-        super(Login, self).__init__(os.path.join('cookies','[%s].cookie' % username))
+        # 调用基类构造函数
+        super(Login, self).__init__(os.path.join('cookies', '[%s].cookie' % username))
 
         try:
             self.load_cookie()
@@ -141,9 +122,13 @@ class Login(HttpOperation):
             print 'cookie not exist'
             self.relogin(username, password)
         else:
-            if self.check_login_state():
-                self.relogin(username, password)
+            self.check_login_state()
+            # if self.check_login_state():
+            self.relogin(username, password)
             print 'cookie is ok'
+
+        html=self.get(WEIBO_URL).content
+        print html
 
     def __prelogin(self, username, password):
         """
@@ -153,7 +138,8 @@ class Login(HttpOperation):
         """
         su = base64.b64encode(urllib.quote(username))
         self.__prelogin_params['su'] = su
-        html = self.get(self._PRE_LOGIN_URL, self.__prelogin_params, {'Referer': self._LOGIN_ROOT_URL}).read()
+        html = self.get(self._PRE_LOGIN_URL, params=self.__prelogin_params,
+                        headers={'Referer': self._LOGIN_ROOT_URL}).text
         json_str = re.match(r'[^{]+({.+?})', html).group(1)
         info = json.loads(json_str)
 
@@ -176,11 +162,13 @@ class Login(HttpOperation):
         :param password: password
         """
         self.__prelogin(username, password)
-        html = self.post(self._LOGIN_URL, self.__login_params, {'Referer': self._LOGIN_ROOT_URL}).read()
+        html = self.post(self._LOGIN_URL, params=self.__login_params, headers={'Referer': self._LOGIN_ROOT_URL}).text
+        # print html
         urls = re.findall(r'\"((http|https)[\s\S]+?)\"', html)
         for url in urls:
             self.get(url[0].replace('\\', ''))
         # 保存cookie
+        print 'login successful, save cookie'
         self.save_cookie()
 
     def check_login_state(self):
@@ -188,12 +176,14 @@ class Login(HttpOperation):
         check login
         :return: if login success return True, else return False
         """
-        if self.get(WEIBO_URL).geturl().find(WEIBO_URL) == -1:
-            return False
-        elif self.get(WEIBO_URL).geturl().find(WEIBO_URL) == 0:
-            return True
-        else:
-            return False
+        # print self.get(WEIBO_URL).text.encode('gbk','ignore')
+        # if self.get(WEIBO_URL).geturl().find(WEIBO_URL) == -1:
+        # return False
+        # elif self.get(WEIBO_URL).geturl().find(WEIBO_URL) == 0:
+        # return True
+        # else:
+        # return False
+
 
 if __name__ == '__main__':
     account = None
