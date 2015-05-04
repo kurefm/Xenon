@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from common import *
-import models
+from models import *
 import urllib
 import urllib2
 import cookielib
@@ -10,11 +10,14 @@ import json
 import re
 import binascii
 import os
+import datetime
 from packages import rsa
 from errors import CookieTypeError
 
 
 class HttpOperation(object):
+    """Supply cookie and http method"""
+
     def __init__(self, cookie_filename=None, cookie_type='Mozilla', default_headers=None):
         """
         Initialize default http header and cookie
@@ -49,22 +52,22 @@ class HttpOperation(object):
         urllib2.install_opener(_opener)
 
 
-    def __get_response(self, url, params={}, headers={}):
+    def __get_response(self, url, params={}, headers={}, timeout=HTTP_TIMEOUT):
         data = None
 
         # 对参数编码
         if params:
             data = urllib.urlencode(params)
         # 创建Request对象
-        request = urllib2.Request(url, data, headers, )
+        request = urllib2.Request(url, data, headers)
         # 添加默认Header
         for (key, value) in self._default_headers.items():
-            if not request.headers.has_key(key):
+            if key not in request.headers:
                 request.headers[key] = value
         # 打开url连接
-        return urllib2.urlopen(request)
+        return urllib2.urlopen(request, timeout=timeout)
 
-    def get(self, url, params={}, headers={}):
+    def get(self, url, params={}, headers={}, timeout=HTTP_TIMEOUT):
         """
         Use get method to request page
         :param url:witch url do you want to request
@@ -75,9 +78,9 @@ class HttpOperation(object):
         if params:
             url = '{url}?{encoded_params}'. \
                 format(url=url, encoded_params=urllib.urlencode(params))
-        return self.__get_response(url, headers=headers)
+        return self.__get_response(url, headers=headers, timeout=timeout)
 
-    def post(self, url, params={}, headers={}):
+    def post(self, url, params={}, headers={}, timeout=HTTP_TIMEOUT):
         """
         Use post method to request page
         :param url:witch url do you want to request
@@ -85,13 +88,15 @@ class HttpOperation(object):
         :param headers:append headers in request
         :return:it with return a response object
         """
-        return self.__get_response(url, params, headers)
+        return self.__get_response(url, params, headers, timeout=timeout)
 
     def load_cookie(self, filename=None, ignore_discard=False, ignore_expires=False):
-        self._cookie.load(filename, ignore_discard, ignore_expires)
+        if self._cookie_filename:
+            self._cookie.load(filename, ignore_discard, ignore_expires)
 
     def save_cookie(self, filename=None, ignore_discard=False, ignore_expires=False):
-        self._cookie.save(filename, ignore_discard, ignore_expires)
+        if self._cookie_filename:
+            self._cookie.save(filename, ignore_discard, ignore_expires)
 
 
 class Login(HttpOperation):
@@ -100,7 +105,6 @@ class Login(HttpOperation):
     _LOGIN_ROOT_URL = 'http://login.sina.com.cn/'
     _PRE_LOGIN_URL = _LOGIN_ROOT_URL + 'sso/prelogin.php'
     _LOGIN_URL = _LOGIN_ROOT_URL + 'sso/login.php?client=' + _CLIENT
-    _SEARCH_URL = 'http://s.weibo.com/'
 
     def __init__(self, username, password):
         self.__prelogin_params = {
@@ -132,18 +136,17 @@ class Login(HttpOperation):
             'returntype': 'IFRAME',
             'setdomain': '1'
         }
-        
-        super(Login, self).__init__(os.path.join('cookies','[%s].cookie' % username))
+
+        super(Login, self).__init__(os.path.join('cookies', '[%s].cookie' % username))
 
         try:
             self.load_cookie()
         except IOError as ioe:
-            print 'cookie not exist'
             self.relogin(username, password)
         else:
-            if self.check_login_state():
+            if not self.check_login_state():
                 self.relogin(username, password)
-            print 'cookie is ok'
+
 
     def __prelogin(self, username, password):
         """
@@ -195,9 +198,51 @@ class Login(HttpOperation):
         else:
             return False
 
+
+class WeiboCrawler(Login):
+    def search(self, key, type='weibo', handler=None, limit=0):
+        """
+        Use key to search something
+        :param key:witch key do you want to search.
+        :param type:witch type do you want to search, it can be weibo,user,pic,apps in now.
+        :return:it with return a response object
+        """
+        type = type.lower()
+        key_encoded = urllib.quote(urllib.quote(key))
+        key_search_url = '{search_url}/{type}/{key_encoded}'.format(
+            search_url=SEARCH_URL,
+            type=type,
+            key_encoded=key_encoded
+        )
+        page = self.get(key_search_url, headers={'Referer': SEARCH_URL}).read()
+        # print 'analysis'
+        blog_ids = re.findall(r'<?div[^>]*?mid=\\"(\d+?)\\"[^>]*?>[\s\S]*?usercard=\\"[^"]*?id=(\d*)[^"]*?\\"', page)
+        blog_requests = []
+        if blog_ids:
+            for (mid, uid) in blog_ids:
+                blog_requests.append(WeiboRequest(uid, mid))
+        return blog_requests
+
+    def get_user(self, uid, handler=None):
+        pass
+
+    def get_user_weibo(self, uid, handler=None, limit=0):
+        pass
+
+    def get_weibo(self, weibo_request, handler=None, limit=0):
+        url = weibo_request.get_url()
+        page = self.get(url).read()
+        print re.search(r'<?meta.*?content="(.*?)".*?name="description".*?/>', page, re.M).group(1)
+        # context = re.search(r'^<?meta.*?content="(.*?)".*?name="description".*?/>$', page,re.M)
+        # print context.group(1)
+
+
 if __name__ == '__main__':
     account = None
     with open('accounts', 'rb') as f:
         account = f.readline().split(',')
     if account:
-        l = Login(account[0], account[1])
+        w = WeiboCrawler(account[0], account[1])
+        blog_requests = w.search('白箱')
+        for blog_request in blog_requests:
+            w.get_weibo(blog_request)

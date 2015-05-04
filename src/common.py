@@ -4,6 +4,8 @@ import base62
 
 # Define something common constants
 WEIBO_URL = 'http://weibo.com/'
+SEARCH_URL = 'http://s.weibo.com/'
+HTTP_TIMEOUT = 5
 
 
 def decode_mid(url):

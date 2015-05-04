@@ -162,6 +162,3 @@ class Login(object):
 if __name__ == '__main__':
     l = Login('h6hummer@live.cn', 'sina281206')
 
-    r=requests.get('www.baidu.com')
-
-
