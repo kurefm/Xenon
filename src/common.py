@@ -1,11 +1,32 @@
 # -*- coding: utf-8 -*-
 
 import base62
+import time
+import re
 
 # Define something common constants
 WEIBO_URL = 'http://weibo.com/'
 SEARCH_URL = 'http://s.weibo.com/'
 HTTP_TIMEOUT = 5
+
+MID_MAX_LENGTH = 16
+MID_MIN_LENGTH = 16
+
+
+# Control char convert table
+CTRL_CHAR_TABLE = {
+    r'\n': '\n',
+    r'\t': '\t'
+}
+
+
+def check_mid(mid):
+    if len(mid) > MID_MAX_LENGTH:
+        return False
+    elif len(mid) < MID_MIN_LENGTH:
+        return False
+    else:
+        return True
 
 
 def decode_mid(url):
@@ -36,3 +57,24 @@ def encode_mid(midint):
         result.append(s)
     result.reverse()
     return ''.join(result)
+
+
+def rnd():
+    return int(time.time() * 1000)
+
+
+def unicode_hex_to_str(unicode_hex):
+    unicode_str = unicode_hex.group()
+    if len(unicode_str) == 2:
+        # len=2 is a char
+        try:
+            return CTRL_CHAR_TABLE[unicode_str]
+        except KeyError:
+            return unicode_str[1:]
+    if len(unicode_str) == 6:
+        # len=6 is a unicode char
+        return unicode_hex.group().decode('unicode_escape')
+
+
+def weibo_blogs_convert(weibo_blogs):
+    return re.sub(r'\\((u[0-9A-Fa-f]{4})|\S)', unicode_hex_to_str, weibo_blogs)

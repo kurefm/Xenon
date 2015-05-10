@@ -1,4 +1,11 @@
 # -*- coding: utf-8 -*-
 
-class CookieTypeError(TypeError):
-    """An cookie type error occurred."""
+
+class CookieKindError(AttributeError):
+
+    """An cookie kind error occurred."""
+
+
+class InfoKindError(AttributeError):
+
+    """An weibo info kind error occurred."""
