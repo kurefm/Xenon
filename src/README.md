@@ -52,7 +52,8 @@ Xenon系统的启动文件，用于管理整个系统，预计提供命令行管
 ### 未提及的文件和目录
 - 一般情况下不再考虑增加目录。  
 - 如果开发过程中需要构建的中间模块，直接在src根目录下添加文件即可。  
-###.gitignore忽略
+
+### .gitignore忽略
 - src目录中的所有Python二进制文件，包括.pyc,.pyo,.pyd。  
 - 以及PyChram的工程目录.idea。  
 - cookies文件夹下的.cookie文件。  
