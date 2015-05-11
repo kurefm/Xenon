@@ -29,6 +29,7 @@ def check_mid(mid):
         return True
 
 
+
 def decode_mid(url):
     url = str(url)[::-1]
     size = len(url) / 4 if len(url) % 4 == 0 else len(url) / 4 + 1

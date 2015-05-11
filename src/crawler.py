@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 
-import httplib
-import urllib
-import urllib2
-import cookielib
 import base64
 import json
 import re
 import binascii
 import os
 import datetime
+import pickle
 from packages import rsa
+from packages import requests
+from packages.requests import Session
+from packages.requests import compat
 import common
 from models import WeiboRequest
 from models import Weibo
@@ -25,78 +25,41 @@ WEIBO_INFO_URL = 'http://weibo.com/aj/v6/{kind}/big'
 WEIBO_INFO_ACCEPT_KIND = ['comment', 'forward', 'like', 'simple']
 
 
-class HttpOperation(object):
+class HttpOperation(Session):
+    """继承Session，添加cookie保存到文件功能，添加一些常用的http头"""
 
-    """Supply cookie and http method"""
-
-    # httplib.HTTPConnection.debuglevel = 1
-
-    def __init__(self, cookie_filename=None, cookie_kind='Mozilla', default_headers=None):
+    def __init__(self, cookie_filename=None, default_headers=None):
         """
         Initialize default http header and cookie
         :param cookie_filename:
         :param cookie_kind:
         :param default_headers:
         """
-        self._default_headers = {
+        self.default_headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.90 Safari/537.36',
             'Accept-Language': 'zh-CN'
         } if not default_headers else default_headers
-        self._cookie = None
 
-        # cookie保存文件
-        if cookie_filename:
-            self._cookie_filename = cookie_filename
+        self.cookie_filename = cookie_filename
 
-            # 创建cookie，带保存文件
-            if cookie_kind.lower() == 'mozilla':
-                self._cookie = cookielib.MozillaCookieJar(
-                    self._cookie_filename)
-            elif cookie_kind.lower() == 'lwp':
-                self._cookie = cookielib.LWPCookieJar(self._cookie_filename)
-            else:
-                raise CookieKindError(
-                    "Unsupported cookie type: %s" % cookie_kind)
-        else:
-            self._cookie = cookielib.CookieJar()
+        super(HttpOperation, self).__init__()
 
-        # 用cookiejar创建build_opener
-        _opener = urllib2.build_opener(
-            urllib2.HTTPCookieProcessor(self._cookie))
-        # 将opener装入urllib2
-        urllib2.install_opener(_opener)
+        # 添加默认http头
+        self.headers.update(self.default_headers)
 
-    def __get_response(self, url, params={}, headers={}, timeout=HTTP_TIMEOUT):
-        data = None
-
-        # 对参数编码
-        if params:
-            data = urllib.urlencode(params)
-        # 创建Request对象
-        request = urllib2.Request(url, data, headers)
-        # 添加默认Header
-        for (key, value) in self._default_headers.items():
-            if key not in request.headers:
-                request.headers[key] = value
-        # 打开url连接
-        return urllib2.urlopen(request, timeout=timeout)
-
-    def get(self, url, params={}, headers={}, timeout=HTTP_TIMEOUT):
+    def get(self, url, timeout=HTTP_TIMEOUT, **kwargs):
         """
         Use get method to request page
-        :param url:witch url do you want to request
-        :param params:append params in request
-        :param headers:append headers in request
-        :return:it with return a response object
+        :param url: witch url do you want to request
+        :param params: append params in request
+        :param headers: append headers in request
+        :param timeout:
+        :return: it with return a response object
         """
-        if params:
-            # 如果params是字典就编码
-            if isinstance(params, dict):
-                params = urllib.urlencode(params)
-            url = '{url}?{params}'.format(url=url, params=params)
-        return self.__get_response(url, headers=headers, timeout=timeout)
+        kwargs['timeout'] = timeout
+        return super(HttpOperation, self).get(url, **kwargs)
 
-    def post(self, url, params={}, headers={}, timeout=HTTP_TIMEOUT):
+    def post(self, url, timeout=HTTP_TIMEOUT, **kwargs):
         """
         Use post method to request page
         :param url:witch url do you want to request
@@ -104,19 +67,23 @@ class HttpOperation(object):
         :param headers:append headers in request
         :return:it with return a response object
         """
-        return self.__get_response(url, params, headers, timeout=timeout)
+        kwargs['timeout'] = timeout
+        return super(HttpOperation, self).post(url, **kwargs)
 
-    def load_cookie(self, filename=None, ignore_discard=False, ignore_expires=False):
-        if self._cookie_filename:
-            self._cookie.load(filename, ignore_discard, ignore_expires)
+    # 序列化RequestsCookieJar来保存cookie
+    def load_cookie(self, filename=None):
+        cookie_filename = self.cookie_filename if not filename else filename
+        with open(cookie_filename, 'rb') as cookie_file:
+            self.cookies = pickle.load(cookie_file)
 
-    def save_cookie(self, filename=None, ignore_discard=False, ignore_expires=False):
-        if self._cookie_filename:
-            self._cookie.save(filename, ignore_discard, ignore_expires)
+    # 读取序列化的RequestsCookieJar对象
+    def save_cookie(self, filename=None):
+        cookie_filename = self.cookie_filename if not filename else filename
+        with open(cookie_filename, 'wb') as cookie_file:
+            pickle.dump(self.cookies, cookie_file)
 
 
 class Login(HttpOperation):
-
     """The class use to login weibo"""
     _CLIENT = 'ssologin.js(v1.4.15)'
     _LOGIN_ROOT_URL = 'http://login.sina.com.cn/'
@@ -153,9 +120,8 @@ class Login(HttpOperation):
             'returntype': 'IFRAME',
             'setdomain': '1'
         }
-
-        super(Login, self).__init__(
-            os.path.join('cookies', '[%s].cookie' % username))
+        # 调用基类构造函数
+        super(Login, self).__init__(os.path.join('cookies', '[%s].cookie' % username))
 
         try:
             self.load_cookie()
@@ -165,16 +131,22 @@ class Login(HttpOperation):
             if not self.check_login_state():
                 self.relogin(username, password)
 
+    # >>>>>>> use_requests
+    #
+    # html=self.get(WEIBO_URL).content
+    # print html
+
     def __prelogin(self, username, password):
         """
         predictive login, get the information to use in login
         :param username:
         :param password:
         """
-        su = base64.b64encode(urllib.quote(username))
+        su = base64.b64encode(compat.quote(username))
         self.__prelogin_params['su'] = su
-        html = self.get(self._PRE_LOGIN_URL, self.__prelogin_params, {
-                        'Referer': self._LOGIN_ROOT_URL}).read()
+        html = self.get(self._PRE_LOGIN_URL, params=self.__prelogin_params,
+                        headers={'Referer': self._LOGIN_ROOT_URL}).text
+
         json_str = re.match(r'[^{]+({.+?})', html).group(1)
         info = json.loads(json_str)
 
@@ -197,13 +169,14 @@ class Login(HttpOperation):
         :param username: username
         :param password: password
         """
+        # 执行完整的登陆过程
         self.__prelogin(username, password)
-        html = self.post(
-            self._LOGIN_URL, self.__login_params, {'Referer': self._LOGIN_ROOT_URL}).read()
+
+        html = self.post(self._LOGIN_URL, params=self.__login_params, headers={'Referer': self._LOGIN_ROOT_URL}).text
+
         urls = re.findall(r'\"((http|https)[\s\S]+?)\"', html)
         for url in urls:
             self.get(url[0].replace('\\', ''))
-        # 保存cookie
         self.save_cookie()
 
     def check_login_state(self):
@@ -211,16 +184,13 @@ class Login(HttpOperation):
         check login
         :return: if login success return True, else return False
         """
-        if self.get(WEIBO_URL).geturl().find(WEIBO_URL) == -1:
-            return False
-        elif self.get(WEIBO_URL).geturl().find(WEIBO_URL) == 0:
+        if self.get(WEIBO_URL).url.find(WEIBO_URL) == 0:
             return True
         else:
             return False
 
 
 class WeiboCrawler(Login):
-
     def ajax_get(self, url, params):
         return self.get(url, params=params, headers={'Content-Type': 'application/x-www-form-urlencoded'})
 
@@ -235,15 +205,16 @@ class WeiboCrawler(Login):
         """
         kind = kind.lower()
         # 查询关键字编码
-        key_encoded = urllib.quote(urllib.quote(key))
+        key_encoded = compat.quote(compat.quote(key))
         # 拼接url
         key_search_url = '{search_url}/{kind}/{key_encoded}'.format(
             search_url=SEARCH_URL,
-            type=kind,
+            kind=kind,
             key_encoded=key_encoded
         )
         # 请求页面
-        page = self.get(key_search_url, headers={'Referer': SEARCH_URL}).read()
+        page = self.get(key_search_url, headers={'Referer': SEARCH_URL})
+        page = page.text
         # 解析页面
         blog_ids = re.findall(
             r'<?div[^>]*?mid=\\"(\d+?)\\"[^>]*?>[\s\S]*?usercard=\\"[^"]*?id=(\d*)[^"]*?\\"', page)
@@ -319,7 +290,10 @@ if __name__ == '__main__':
         account = f.readline().split(',')
     if account:
         w = WeiboCrawler(account[0], account[1])
-        blog_requests = w.search('白箱')
-        w.get_weibo(blog_requests[0])
+        print w.search('白箱')
+        # print
+        print w.check_login_state()
+        # blog_requests = w.search('白箱')
+        # w.get_weibo(blog_requests[0])
         # for blog_request in blog_requests:
         # w.get_weibo(blog_request)
