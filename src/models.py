@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import common
+import datetime
 
 """
 model
@@ -8,9 +9,26 @@ This is common data model for this system
 """
 
 
-class Weibo(object):
-    def __init__(self, uid, mid, content,
-                 extra=None, forward=None, comment=None, like=None):
+class WeiboRequest(object):
+    def __init__(self, uid, mid):
+        self.uid = uid if isinstance(uid, int) else int(uid)
+        self.mid = mid if isinstance(mid, int) else int(mid)
+        self.url = '%s%d/%s' % (common.WEIBO_URL, self.uid, common.encode_mid(self.mid))
+
+    def __repr__(self):
+        return '<WeiboRequest %s>' % self.url
+
+    def __cmp__(self, other):
+        if isinstance(other, WeiboRequest):
+            return cmp(self.mid, other.mid)
+        else:
+            return cmp(self, other)
+
+
+class Weibo(WeiboRequest):
+    def __init__(self, uid, mid, content, time, timestamp=None, extra=None,
+                 forward_num=0, comment_num=0, like_num=0,
+                 forward=None, comment=None, like=None):
         """
         构造函数，构造一个微博对象。一条微博必要的字段是uid、mid和context。
         :param uid: user id
@@ -22,40 +40,46 @@ class Weibo(object):
         :param like: 点赞
         :return:
         """
-        self.uid = uid if isinstance(uid, int) else int(uid)
-        self.mid = mid if isinstance(mid, int) else int(mid)
+        super(Weibo, self).__init__(uid, mid)
         self.content = content if isinstance(content, str) else str(content)
+        self.time = time
+        self.timestamp = datetime.datetime.now() if not timestamp else timestamp
         self.extra = extra
+        self.forward_num = forward_num if isinstance(forward_num, int) else int(forward_num)
+        self.comment_num = comment_num if isinstance(comment_num, int) else int(comment_num)
+        self.like_num = like_num if isinstance(like_num, int) else int(like_num)
         self.forward = forward
         self.comment = comment
         self.like = like
 
     def __repr__(self):
-        return '<Weibo %s%d/%s>' % (common.WEIBO_URL, self.uid, common.encode_mid(self.mid))
+        return '<Weibo %s>' % self.url
+
+
+class WeiboUser(object):
+    def __init__(self, uid, name):
+        self.uid = uid
+        self.name = name
 
     def __cmp__(self, other):
-        if isinstance(other, Weibo):
-            return cmp(self.mid, other.mid)
+        if isinstance(other, WeiboUser):
+            return cmp(self.uid, other.uid)
         else:
             return cmp(self, other)
 
-
-class WeiboRequest(object):
-    def __init__(self, uid, mid):
-        self.uid = uid if isinstance(uid, int) else int(uid)
-        self.mid = mid if isinstance(mid, int) else int(mid)
-
-    def __repr__(self):
-        return '<WeiboRequest %s>' % self.get_url()
+class WeiboComment(object):
+    def __init__(self, mid, cid, content, suid=None, like=None):
+        self.mid = mid
+        self.cid = cid
+        self.content = content
+        self.suid = suid
+        self.like = like
 
     def __cmp__(self, other):
-        if isinstance(other, WeiboRequest):
-            return cmp(self.mid, other.mid)
+        if isinstance(other, WeiboComment):
+            return cmp(self.cid, other.cid)
         else:
             return cmp(self, other)
-
-    def get_url(self):
-        return '%s%d/%s' % (common.WEIBO_URL, self.uid, common.encode_mid(self.mid))
 
 
 if __name__ == '__main__':

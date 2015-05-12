@@ -7,7 +7,7 @@ import re
 # Define something common constants
 WEIBO_URL = 'http://weibo.com/'
 SEARCH_URL = 'http://s.weibo.com/'
-HTTP_TIMEOUT = 5
+HTTP_TIMEOUT = 30
 
 MID_MAX_LENGTH = 16
 MID_MIN_LENGTH = 16
@@ -27,7 +27,6 @@ def check_mid(mid):
         return False
     else:
         return True
-
 
 
 def decode_mid(url):
@@ -77,5 +76,71 @@ def unicode_hex_to_str(unicode_hex):
         return unicode_hex.group().decode('unicode_escape')
 
 
+class Section(object):
+    def __init__(self, config_obj, section):
+        if section not in config_obj.sections():
+            from errors import NoSectionError
+
+            raise NoSectionError('No section: %s' % section)
+        super(Section, self).__init__()
+        self.__dict__['config'] = config_obj
+        self.__dict__['section'] = section
+
+    def __getattr__(self, option):
+        return self.config.get(self.section, option)
+
+    def __setattr__(self, option, value):
+        self.config.set(self.section, option, value)
+
+    def __iter__(self):
+        return self.config.options(self.section).__iter__()
+
+
+from ConfigParser import ConfigParser
+
+
+class Configuration(ConfigParser):
+    def __init__(self, filename):
+        ConfigParser.__init__(self)
+        self.filename = filename
+        self.read(filename)
+
+    def __getattr__(self, section):
+        return Section(self, section)
+
+    def __iter__(self):
+        return self.sections().__iter__()
+
+    def __str__(self):
+        return '<Configuration Object>'
+
+    def __repr__(self):
+        self.__str__(self)
+
+    def __dir__(self):
+        return dir(ConfigParser) + ['filename', 'save', 'reload']
+
+    def reload(self, filename=None):
+        self.read(filename)
+
+    def save(self, filename=None):
+        filename = self.filename if not filename else filename
+
+        with open(filename, 'wb') as fp:
+            self.write(fp)
+
+# 全局配置
+CONFIG = Configuration('config')
+
+
 def weibo_blogs_convert(weibo_blogs):
     return re.sub(r'\\((u[0-9A-Fa-f]{4})|\S)', unicode_hex_to_str, weibo_blogs)
+
+
+if __name__ == '__main__':
+    config = CONFIG
+    print config.app.name
+    config.app.editor = 'kure'
+    # config.add_section('language')
+    config.language.cn = '氙'
+    config.save()

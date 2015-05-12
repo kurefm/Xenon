@@ -24,20 +24,20 @@ HTTP_TIMEOUT = common.HTTP_TIMEOUT
 WEIBO_INFO_URL = 'http://weibo.com/aj/v6/{kind}/big'
 WEIBO_INFO_ACCEPT_KIND = ['comment', 'forward', 'like', 'simple']
 
+# compiled regex
+RE_FIND_MID_UID_IN_SEARCH = re.compile(r'<?div[^>]*?mid=\\"(\d+?)\\"[^>]*?>[\s\S]*?usercard=\\"[^"]*?id=(\d*)[^"]*?\\"')
+RE_FIND_CONTENT_IN_WEIBO = re.compile(r'<?meta.*?content="(.*?)".*?name="description".*?/>')
+RE_FIND_TIME_IN_WEIBO = re.compile(r'')
+
 
 class HttpOperation(Session):
     """继承Session，添加cookie保存到文件功能，添加一些常用的http头"""
 
     def __init__(self, cookie_filename=None, default_headers=None):
-        """
-        Initialize default http header and cookie
-        :param cookie_filename:
-        :param cookie_kind:
-        :param default_headers:
-        """
         self.default_headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.90 Safari/537.36',
-            'Accept-Language': 'zh-CN'
+            'Accept-Language': 'zh-CN',
+            'Accept-Encoding': 'gzip, deflate'
         } if not default_headers else default_headers
 
         self.cookie_filename = cookie_filename
@@ -131,10 +131,8 @@ class Login(HttpOperation):
             if not self.check_login_state():
                 self.relogin(username, password)
 
-    # >>>>>>> use_requests
-    #
-    # html=self.get(WEIBO_URL).content
-    # print html
+    def __del__(self):
+        self.save_cookie()
 
     def __prelogin(self, username, password):
         """
@@ -154,12 +152,12 @@ class Login(HttpOperation):
         self.__login_params['servertime'] = info['servertime']
         self.__login_params['nonce'] = info['nonce']
         self.__login_params['rsakv'] = info['rsakv']
-        self.__login_params['sp'] = self.__encrypt_password(
-            password, info['pubkey'], info['servertime'], info['nonce'])
+        self.__login_params['sp'] = self.__encrypt_password(password, info['pubkey'], info['servertime'], info['nonce'])
 
-    def __encrypt_password(self, password, publicKey, serverTime, nonce):
-        key = rsa.PublicKey(int(publicKey, 16), int('10001', 16))
-        message = '%s\t%s\n%s' % (str(serverTime), str(nonce), str(password))
+    @staticmethod
+    def __encrypt_password(password, public_key, server_time, nonce):
+        key = rsa.PublicKey(int(public_key, 16), int('10001', 16))
+        message = '%s\t%s\n%s' % (str(server_time), str(nonce), str(password))
         password = rsa.encrypt(message.encode('utf-8'), key)
         return binascii.b2a_hex(password)
 
@@ -191,18 +189,11 @@ class Login(HttpOperation):
 
 
 class WeiboCrawler(Login):
-    def ajax_get(self, url, params):
+    def get_ajax(self, url, params):
         return self.get(url, params=params, headers={'Content-Type': 'application/x-www-form-urlencoded'})
 
     def search(self, key, kind='weibo', handler=None, limit=0, is_return=True):
-        """
-        Use key to search something
-        :param key: witch key do you want to search.
-        :param kind: witch type do you want to search, it can be weibo,user,pic,apps in now.
-        :param limit: limit search number
-        :param is_return: if you use handler, cancel return to improve performance.
-        :return: it with return a response object
-        """
+        # 搜索得到每页微博的html，作为参数传给handler
         kind = kind.lower()
         # 查询关键字编码
         key_encoded = compat.quote(compat.quote(key))
@@ -212,76 +203,145 @@ class WeiboCrawler(Login):
             kind=kind,
             key_encoded=key_encoded
         )
+
+        handler = self.search_page_handler if not handler else handler
+
         # 请求页面
-        page = self.get(key_search_url, headers={'Referer': SEARCH_URL})
-        page = page.text
-        # 解析页面
-        blog_ids = re.findall(
-            r'<?div[^>]*?mid=\\"(\d+?)\\"[^>]*?>[\s\S]*?usercard=\\"[^"]*?id=(\d*)[^"]*?\\"', page)
+        page = self.get(key_search_url, headers={'Referer': SEARCH_URL}).text
 
-        # 返回WeiboRequest列表
-        if is_return:
-            blog_requests = []
-            if blog_ids:
-                for (mid, uid) in blog_ids:
-                    request = WeiboRequest(uid, mid)
-                    if handler:
-                        handler(request)
-                    blog_requests.append(request)
-            return blog_requests
-        # 不返回列表，只执行handler
-        else:
-            if blog_ids:
-                for (mid, uid) in blog_ids:
-                    if handler:
-                        handler(WeiboRequest(uid, mid))
+        # 执行页面处理程序
+        handler(page)
 
-    def get_user(self, uid, handler=None):
+        page_urls = []
+        # 正则查找所有页面
+
+        for page_url in page_urls:
+            page = self.get(page_url, headers={'Referer': key_search_url}).text
+            # 执行页面处理程序
+            handler(page)
+
+
+    def search_page_handler(self, html, handler=None, limit=0):
+        # 处理html得到uid和mid（WeiboRequest），作为参数传给handler
+        handler = self.weibo_handler if not handler else handler
+
+        blog_ids = re.findall(RE_FIND_MID_UID_IN_SEARCH, html)
+
+        for (mid, uid) in blog_ids:
+            handler(WeiboRequest(uid, mid))
+
+    def weibo_handler(self, weibo_request):
+        # 请求微博页面，遍历转发，评论，点赞信息。
+        html = self.get(weibo_request.url)
+
+        uid = weibo_request.uid
+        mid = weibo_request.mid
+        content = re.search(RE_FIND_CONTENT_IN_WEIBO, html, re.M).group(1)
+        time = re.search(RE_FIND_TIME_IN_WEIBO, html)
+
+        weibo = Weibo(uid, mid, content, time)
+
+        weibo.forward = self.travels_forward(mid)
+        weibo.comment = self.travels_comment(mid)
+        weibo.like = self.travels_like(mid)
+
+        return weibo
+
+    def travels_forward(self, mid, handler=None):
+        # 遍历转发，返回WeiboRequest列表
+        # 使用ajax请求数据，每部分数据交由handler处理
+
+        params = {
+            'ajwvr': 6,
+            'id': mid,
+            '__rnd': common.rnd()
+        }
+
+        forwards = []
+
+        url = WEIBO_INFO_URL.format(kind='forward')
+        # 请求第一页数据
+        ajax_data = self.get_ajax(url, params=params)
+        forwards.extend(handler(ajax_data))
+
+        # 获取页数
+        page_num = 0
+
+        # 遍历页数
+        for num in range(2, page_num + 1):
+            params['page'] = num
+            ajax_data = self.get_ajax(url, params=params)
+            forwards.extend(handler(ajax_data))
+
+        return forwards
+
+    def travels_comment(self, mid, handler=None):
+        # 遍历评论，返回WeiboComment列表
+        # 使用ajax请求数据，每部分数据交由handler处理
+
+        params = {
+            'ajwvr': 6,
+            'id': mid,
+            '__rnd': common.rnd()
+        }
+
+        comments = []
+
+        url = WEIBO_INFO_URL.format(kind='comment')
+        # 请求第一页数据
+        ajax_data = self.get_ajax(url, params=params)
+        comments.extend(handler(ajax_data))
+
+        # 获取页数
+        page_num = 0
+
+        # 遍历页数
+        for num in range(2, page_num + 1):
+            params['page'] = num
+            ajax_data = self.get_ajax(url, params=params)
+            comments.extend(handler(ajax_data))
+
+        return comments
+
+    def travels_like(self, mid, handler=None):
+        # 遍历评论，返回uid列表
+        # 使用ajax请求数据，每部分数据交由handler处理
+
+        params = {
+            'ajwvr': 6,
+            'id': mid,
+            '__rnd': common.rnd()
+        }
+
+        likes = []
+
+        url = WEIBO_INFO_URL.format(kind='forward')
+        # 请求第一页数据
+        ajax_data = self.get_ajax(url, params=params)
+        likes.extend(handler(ajax_data))
+
+        # 获取页数
+        page_num = 0
+
+        # 遍历页数
+        for num in range(2, page_num + 1):
+            params['page'] = num
+            ajax_data = self.get_ajax(url, params=params)
+            likes.extend(handler(ajax_data))
+
+        return likes
+
+    def forward_ajax_handler(self, json_str):
+        # 处理每页ajax数据，得到WeiboRequest列表
         pass
 
-    def get_user_weibo(self, uid, handler=None, limit=0):
+    def comment_ajax_handler(self, json_str):
+        # 处理每页ajax数据，得到WeiboComment列表
         pass
 
-    def get_weibo(self, weibo_request, handler=None, limit=0):
-        url = weibo_request.get_url()
-
-        page = self.get(url).read()
-        with open(os.path.join('test', 'weibo.html'), 'wb') as f:
-            f.write(page)
-        print re.search(r'<?meta.*?content="(.*?)".*?name="description".*?/>', page, re.M).group(1)
-        # context = re.search(r'^<?meta.*?content="(.*?)".*?name="description".*?/>$', page,re.M)
-        # print context.group(1)
-
-    def get_weibo_info(self, mid, kind='comment', handler=None, limit=0, is_return=True):
-        # 检查请求类型
-        if kind not in WEIBO_INFO_ACCEPT_KIND:
-            raise InfoKindError('Unsupported weibo info kind: %s' % kind)
-
-        # 检查mid
-        if isinstance(mid, WeiboRequest):
-            mid = mid.mid
-        kind = kind.lower()
-
-        ajax_page = None
-        if kind == 'forward':
-            url = WEIBO_INFO_URL.format(kind='mblog/info')
-            params = {
-                'ajwvr': 6,
-                'mid': mid,
-                'page': 1,
-                '__rnd': common.rnd()
-            }
-            ajax_page = self.ajax_get(url, params)
-        elif kind == 'simple':
-            pass
-        else:
-            url = WEIBO_INFO_URL.format(kind=kind)
-            params = {
-                'ajwvr': 6,
-                'id': mid,
-                '__rnd': common.rnd()
-            }
-            ajax_page = self.ajax_get(url, params)
+    def like_ajax_handler(self, json_str):
+        # 处理每页ajax数据，得到uid列表
+        pass
 
 
 if __name__ == '__main__':
@@ -290,7 +350,7 @@ if __name__ == '__main__':
         account = f.readline().split(',')
     if account:
         w = WeiboCrawler(account[0], account[1])
-        print w.search('白箱')
+        # print w.search('白箱')
         # print
         print w.check_login_state()
         # blog_requests = w.search('白箱')

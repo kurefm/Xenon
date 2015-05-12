@@ -9,3 +9,6 @@ class CookieKindError(AttributeError):
 class InfoKindError(AttributeError):
 
     """An weibo info kind error occurred."""
+
+class NoSectionError(KeyError):
+    """Raised when no section matches a requested option."""
