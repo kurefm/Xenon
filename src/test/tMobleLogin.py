@@ -5,13 +5,12 @@ import requests
 import urllib2
 import urllib
 
-headers = {
-    'Accept': 'application/json',
+headersA = {
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'zh-CN,zh;q=0.8,en-US;q=0.5,en;q=0.3',
     'Accept-Encoding': 'gzip, deflate',
-    'Accept-Language': 'zh-CN,zh;q=0.8,en-GB;q=0.6,en;q=0.4',
-    'User-Agent': 'Mozilla/5.0 (Linux; Android 4.3; Nexus 7 Build/JSS15Q) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2307.2 Mobile Safari/537.36',
-    'DNT': '1',
-    'Host': 'login.sina.com.cn',
+    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+    'Referer': 'https://passport.weibo.cn/signin/login?entry=mweibo&res=wel&wm=3549&r=http%3A%2F%2Fm.weibo.cn%2F',
 }
 
 data = {
@@ -74,11 +73,10 @@ body = "username=h6hummer%40live.cn&password=cpu-123456&savestate=1&ec=0&pageref
 # data = gzipper.read()
 # print data
 
-s=requests.Session()
-s.headers.update(headers)
+s = requests.Session()
+s.headers.update(headersA)
 
 print urllib.urlencode(data)
-
 
 r = s.post('https://passport.weibo.cn/sso/login', data=data)
 print r.content
