@@ -1,18 +1,29 @@
-# -*- encoding: utf-8 -*-
+# coding=utf-8
+# !/usr/bin/python
 
-import threading
+import thread
+import time
+import packages.concurrent.futures as futures
 
-semaphore = threading.Semaphore(5)
+# 为线程定义一个函数
+def print_time(threadName, delay):
+    count = 0
+    while count < 5:
+        time.sleep(delay)
+        count += 1
+        print "%s: %s" % (threadName, time.ctime(time.time()))
 
-semaphore.acquire()
+# 创建两个线程
+try:
+    thread.start_new_thread(print_time, ("Thread-1", 0.5, ))
+    thread.start_new_thread(print_time, ("Thread-2", 1, ))
+except:
+    print "Error: unable to start thread"
 
+while 1:
+    pass
 
-semaphore.release()
-semaphore.release()
-semaphore.release()
-semaphore.release()
-semaphore.release()
-print semaphore._Semaphore__value
+futures.Executor
 
 
 

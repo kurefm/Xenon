@@ -12,3 +12,6 @@ class InfoKindError(AttributeError):
 
 class NoSectionError(KeyError):
     """Raised when no section matches a requested option."""
+
+class LoginError(RuntimeError):
+    """Can't login"""

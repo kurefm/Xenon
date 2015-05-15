@@ -6,7 +6,7 @@ import re
 import binascii
 import os
 import datetime
-import pickle
+import cPickle as pickle
 from packages import rsa
 from packages import requests
 from packages.requests import Session
@@ -14,8 +14,7 @@ from packages.requests import compat
 import common
 from models import WeiboRequest
 from models import Weibo
-from errors import CookieKindError
-from errors import InfoKindError
+from errors import LoginError
 
 WEIBO_URL = common.WEIBO_URL
 SEARCH_URL = common.SEARCH_URL
@@ -25,6 +24,7 @@ WEIBO_INFO_URL = 'http://weibo.com/aj/v6/{kind}/big'
 WEIBO_INFO_ACCEPT_KIND = ['comment', 'forward', 'like', 'simple']
 
 # compiled regex
+RE_FIND_LOGIN_ERROR_INFO = re.compile(r'"retcode":"([^"]+?)","reason":"([^"]+?)"')
 RE_FIND_MID_UID_IN_SEARCH = re.compile(r'<?div[^>]*?mid=\\"(\d+?)\\"[^>]*?>[\s\S]*?usercard=\\"[^"]*?id=(\d*)[^"]*?\\"')
 RE_FIND_CONTENT_IN_WEIBO = re.compile(r'<?meta.*?content="(.*?)".*?name="description".*?/>')
 RE_FIND_TIME_IN_WEIBO = re.compile(r'')
@@ -35,9 +35,12 @@ class HttpOperation(Session):
 
     def __init__(self, cookie_filename=None, default_headers=None):
         self.default_headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.90 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.37 (KHTML, like Gecko) Chrome/42.0.2312.90 Safari/537.36',
             'Accept-Language': 'zh-CN',
-            'Accept-Encoding': 'gzip, deflate'
+            'Accept-Encoding': 'gzip, deflate',
+            'DNT': '1',
+            'Host': 'login.sina.com.cn',
+            'Referer': 'http://login.sina.com.cn/?r=%2Fmember%2Fmy.php%3Fentry%3Dsso'
         } if not default_headers else default_headers
 
         self.cookie_filename = cookie_filename
@@ -96,7 +99,8 @@ class Login(HttpOperation):
             'callback': 'sinaSSOController.preloginCallBack',
             'su': '',
             'rsakt': 'mod',
-            'client': self._CLIENT
+            'client': self._CLIENT,
+            '_': ''
         }
         self.__login_params = {
             'entry': 'account',
@@ -104,18 +108,18 @@ class Login(HttpOperation):
             'from': '',
             'savestate': '30',
             'useticket': '0',
-            'pagerefer': '',
+            'pagerefer': 'http%3A%2F%2Flogin.sina.com.cn%2Fsso%2Flogout.php',
             'vsnf': '1',
-            'su': '',
+            'su': 'eGVub24wMDAxJTQwMTYzLmNvbQ%3D%3D',
             'service': 'sso',
-            'servertime': '1429884778',
-            'nonce': 'GAFUK7',
+            'servertime': '1431656928',
+            'nonce': 'F9RO5T',
             'pwencode': 'rsa2',
             'rsakv': '1330428213',
-            'sp': '',
+            'sp': '63a228299e7ea8fdcbe45b39c4bd7309259d8b78d9e4a78c2d46c34526e2278243e1516351969778c868f5591a8fd472ae9ebd1976b07ffa941808b38b24867d0643bc582dbe4a92df3340267277a86d932d56e78253b863759a8952ff7246bffc4d1a24557f5432c028b05f3996225796312bf2fb71a78e6eec40427e58fb25',
             'sr': '1366*768',
             'encoding': 'UTF-8',
-            'prelt': '34925',
+            'prelt': '366',
             'callback': 'parent.sinaSSOController.loginCallBack',
             'returntype': 'IFRAME',
             'setdomain': '1'
@@ -131,9 +135,6 @@ class Login(HttpOperation):
             if not self.check_login_state():
                 self.relogin(username, password)
 
-    def __del__(self):
-        self.save_cookie()
-
     def __prelogin(self, username, password):
         """
         predictive login, get the information to use in login
@@ -141,11 +142,15 @@ class Login(HttpOperation):
         :param password:
         """
         su = base64.b64encode(compat.quote(username))
+
         self.__prelogin_params['su'] = su
+        self.__prelogin_params['_'] = common.rnd()
+
         html = self.get(self._PRE_LOGIN_URL, params=self.__prelogin_params,
                         headers={'Referer': self._LOGIN_ROOT_URL}).text
 
         json_str = re.match(r'[^{]+({.+?})', html).group(1)
+        print json_str
         info = json.loads(json_str)
 
         self.__login_params['su'] = su
@@ -170,11 +175,21 @@ class Login(HttpOperation):
         # 执行完整的登陆过程
         self.__prelogin(username, password)
 
-        html = self.post(self._LOGIN_URL, params=self.__login_params, headers={'Referer': self._LOGIN_ROOT_URL}).text
+        print self.__login_params
+
+        html = self.post(self._LOGIN_URL, params=self.__login_params,
+                         headers={'Referer': self._LOGIN_ROOT_URL, 'Origin': self._LOGIN_ROOT_URL})
+        print html.text
+        # 检查是否存在登陆错误
+        error = re.search(RE_FIND_LOGIN_ERROR_INFO, html.text)
+        if error:
+            error_msg = common.weibo_blogs_convert(error.group(0))
+            raise LoginError(error_msg)
 
         urls = re.findall(r'\"((http|https)[\s\S]+?)\"', html)
         for url in urls:
             self.get(url[0].replace('\\', ''))
+        # 登陆完成后保存cookie
         self.save_cookie()
 
     def check_login_state(self):
@@ -347,12 +362,14 @@ class WeiboCrawler(Login):
 if __name__ == '__main__':
     account = None
     with open('accounts', 'rb') as f:
+        f.readline()
         account = f.readline().split(',')
     if account:
+        print account
         w = WeiboCrawler(account[0], account[1])
         # print w.search('白箱')
         # print
-        print w.check_login_state()
+        # print w.check_login_state()
         # blog_requests = w.search('白箱')
         # w.get_weibo(blog_requests[0])
         # for blog_request in blog_requests:
