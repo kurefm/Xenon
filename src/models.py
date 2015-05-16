@@ -14,6 +14,7 @@ class WeiboRequest(object):
         self.uid = uid if isinstance(uid, int) else int(uid)
         self.mid = mid if isinstance(mid, int) else int(mid)
         self.url = '%s%d/%s' % (common.WEIBO_URL, self.uid, common.encode_mid(self.mid))
+        self.murl = '%s%d/%s' % (common.MOBILE_WEIBO_URL, self.uid, common.encode_mid(self.mid))
 
     def __repr__(self):
         return '<WeiboRequest %s>' % self.url
@@ -66,6 +67,7 @@ class WeiboUser(object):
             return cmp(self.uid, other.uid)
         else:
             return cmp(self, other)
+
 
 class WeiboComment(object):
     def __init__(self, mid, cid, content, suid=None, like=None):

@@ -1,13 +1,17 @@
 # -*- coding: utf-8 -*-
 
+import random
 import base62
 import time
 import re
 
 # Define something common constants
 WEIBO_URL = 'http://weibo.com/'
+MOBILE_WEIBO_URL = 'http://m.weibo.cn/'
 SEARCH_URL = 'http://s.weibo.com/'
-HTTP_TIMEOUT = 30
+MOBILE_SEARCH_RESULT_URL = 'http://m.weibo.cn/searchs/result'
+MOBILE_SEARCH_URL = 'http://m.weibo.cn/searchs'
+HTTP_TIMEOUT = 15
 
 MID_MAX_LENGTH = 16
 MID_MIN_LENGTH = 16
@@ -60,7 +64,7 @@ def encode_mid(midint):
 
 
 def rnd():
-    return int(time.time() * 1000)
+    return int(time.time() * 1000 + random.random() * 10000)
 
 
 def unicode_hex_to_str(unicode_hex):

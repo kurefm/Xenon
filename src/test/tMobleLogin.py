@@ -82,3 +82,4 @@ print urllib.urlencode(data)
 
 r = s.post('https://passport.weibo.cn/sso/login', data=data)
 print r.content
+print r.json()['data']['crossdomainlist']
