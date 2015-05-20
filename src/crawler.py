@@ -17,6 +17,7 @@ from packages import requests
 from packages.requests import Session
 from packages.requests import compat
 import common
+import data
 from models import WeiboRequest
 from models import Weibo
 from errors import LoginError
@@ -277,6 +278,8 @@ class MobileWeiboLogin(HttpOperation):
     }
 
     def __init__(self, username, password, pre_sec_access=PRE_SEC_ACCESS):
+        self.username = username
+
         cookie_filename = os.path.join('cookies', '[%s].cookie' % username)
 
         super(MobileWeiboLogin, self).__init__(cookie_filename, self._DEFAULT_HEADERS, pre_sec_access=pre_sec_access)
@@ -519,8 +522,7 @@ class MobileWeiboCrawler(MobileWeiboLogin):
         # 处理json得到Weibo Object，作为参数传给handler
         handler = self.weibo_handler if not handler else handler
 
-
-        json_str=common.weibo_blogs_convert(json_str)
+        json_str = common.weibo_blogs_convert(json_str)
 
         mblog_list = re.findall(RE_FIND_MOBILE_WEIBO_INFO, json_str)
 
@@ -587,8 +589,7 @@ class MobileWeiboCrawler(MobileWeiboLogin):
         # return weibo
 
     def weibo_handler(self, weibo_obj):
-        print weibo_obj.time, weibo_obj.mid, weibo_obj.content.encode(sys.getfilesystemencoding(),'ignore')
-
+        print weibo_obj.time, weibo_obj.mid, weibo_obj.content.encode(sys.getfilesystemencoding(), 'ignore')
 
     def travels_forward(self, mid, handler=None):
         # 遍历转发，返回WeiboRequest列表
@@ -704,13 +705,25 @@ class WeiboStatelessCrawler(object):
 
 if __name__ == '__main__':
     account = None
-    with open('accounts.json', 'rb') as f:
+    with open('accounts', 'rb') as f:
         account = json.load(f)
 
-    account = account[0]
+    account = account[5]
     print account
     m = MobileWeiboCrawler(account['username'], account['password'])
     print m.check_login_status()
+
+    resp = m.get(
+        'http://m.weibo.cn/p/index?containerid=100103type%3D25%26q%3D%26cat%3Drealtimehot%26t%3D&title=%E5%AE%9E%E6%97%B6%E7%83%AD%E6%90%9C%E6%A6%9C&uid=5601875006')
+
+    def insert(weibo_obj):
+        print 'start insert {0}.'.format(weibo_obj.mid)
+        data.insert_weibo(weibo_obj)
+        print 'insert weibo {0} ok.'.format(weibo_obj.mid)
+
+    m.search('白箱', handler=insert)
+
+    # print common.weibo_blogs_convert(resp.text).encode('gbk','ignore')
 
     input_str = ''
 
@@ -725,4 +738,4 @@ if __name__ == '__main__':
 
     # print m.get(WEIBO_URL).text.encode('gbk','ignore')
 
-    m.search('白箱')
+    #

@@ -13,7 +13,7 @@ SEARCH_URL = 'http://s.weibo.com/'
 MOBILE_SEARCH_RESULT_URL = 'http://m.weibo.cn/searchs/result'
 MOBILE_SEARCH_URL = 'http://m.weibo.cn/searchs'
 
-PRE_SEC_ACCESS = 1
+PRE_SEC_ACCESS = 0.33
 
 HTTP_TIMEOUT = 15
 
@@ -117,6 +117,9 @@ class Configuration(ConfigParser):
         ConfigParser.__init__(self)
         self.filename = filename
         self.read(filename)
+
+    def __del__(self):
+        self.save()
 
     def __getattr__(self, section):
         return Section(self, section)

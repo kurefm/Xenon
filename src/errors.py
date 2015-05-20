@@ -1,17 +1,20 @@
 # -*- coding: utf-8 -*-
 
+class XenonError(StandardError):
+    """All error' superclass """
 
-class CookieKindError(AttributeError):
 
+class CookieKindError(XenonError):
     """An cookie kind error occurred."""
 
 
-class InfoKindError(AttributeError):
-
+class InfoKindError(XenonError):
     """An weibo info kind error occurred."""
 
-class NoSectionError(KeyError):
+
+class NoSectionError(XenonError):
     """Raised when no section matches a requested option."""
 
-class LoginError(RuntimeError):
+
+class LoginError(XenonError):
     """Can't login"""
