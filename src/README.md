@@ -22,29 +22,42 @@ import packages.rsa
 #### test目录
 test目录存放测试中的代码，要添加不确定的代码请先在此目录下进行测试。请务必保crawler、data、analysis这3个项目目录的整洁和可用，不要盲目地向其中添加不可靠的代码。 
 
-1. #### crawler.py文件
+#### cookies目录
+用于存放会话中用的cookie，以账号为文件名进行存储，保存为Mozilla格式。由crawler中的cookielib自动进行管理。为了避免账号泄露，.cookie文件不会同步到git上。  
+
+#### crawler.py文件
 爬虫的最终实现文件，提供一系列的接口来创建、使用和管理爬虫。  
 
-2. #### data.py文件
+#### data.py文件
 数据中心的最终实现文件，提供一系列存储和读取数据的接口。  
 
-3. #### analysis.py文件
+#### analysis.py文件
 数据分析的最终实现文件，提供一系列数据分析的方法。  
 
-4. #### common.py文件
+#### common.py文件
 提供系统中通用的类和函数，主要包括全局配置文件读写，全局日志记录。  
 
-5. #### xenon.py文件
+#### errors.py文件
+提供系统中用到的所有自定义异常。  
+
+#### models.py文件
+提供系统中使用数据模型。  
+
+#### xenon.py文件
 Xenon系统的启动文件，用于管理整个系统，预计提供命令行管理模式和Web管理模式。  
 
-6. #### config文件
+#### config文件
 该文件将用于系统的全局配置。  
-
 
 ### 未提及的文件和目录
 - 一般情况下不再考虑增加目录。  
 - 如果开发过程中需要构建的中间模块，直接在src根目录下添加文件即可。  
-- .gitignore文件会忽略src目录中的所有Python二进制文件，包括.pyc,.pyo,.pyd，以及PyChram的工程目录.idea。  
+
+### .gitignore忽略
+- src目录中的所有Python二进制文件，包括.pyc,.pyo,.pyd。  
+- 以及PyChram的工程目录.idea。  
+- cookies文件夹下的.cookie文件。  
+- 账号列表文件accounts。  
 
 ### 代码编写规范
 请参考Google's Python 风格指南：
