@@ -5,6 +5,8 @@ import sys
 sys.path.append('../3rd/')
 sys.path.append('../')
 
+import requests
+
 import urllib
 import urllib2
 import cookielib
@@ -62,7 +64,7 @@ class Login(object):
         opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookie))
         # 将opener装入urllib2
         urllib2.install_opener(opener)
-        # self.__login(username, password)
+        self.__login(username, password)
         # with open('log.html', 'w') as f:
         # f.write(self.get('http://s.weibo.com/weibo/%25E7%2599%25BD%25E7%25AE%25B1',
         # {'Referer': 'http://s.weibo.com/'}).read())
@@ -159,7 +161,4 @@ class Login(object):
 
 if __name__ == '__main__':
     l = Login('h6hummer@live.cn', 'sina281206')
-
-
-
 

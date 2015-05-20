@@ -2,6 +2,7 @@
 
 ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
+
 def base62_encode(num, alphabet=ALPHABET):
     """Encode a number in Base X
 
@@ -18,6 +19,7 @@ def base62_encode(num, alphabet=ALPHABET):
         arr.append(alphabet[rem])
     arr.reverse()
     return ''.join(arr)
+
 
 def base62_decode(string, alphabet=ALPHABET):
     """Decode a Base X encoded string into the number
@@ -38,7 +40,8 @@ def base62_decode(string, alphabet=ALPHABET):
 
     return num
 
-def url_to_mid(url):
+
+def decode_mid(url):
     url = str(url)[::-1]
     size = len(url) / 4 if len(url) % 4 == 0 else len(url) / 4 + 1
     result = []
@@ -52,7 +55,8 @@ def url_to_mid(url):
     result.reverse()
     return int(''.join(result))
 
-def mid_to_url(midint):
+
+def encode_mid(midint):
     midint = str(midint)[::-1]
     size = len(midint) / 7 if len(midint) % 7 == 0 else len(midint) / 7 + 1
     result = []
@@ -66,8 +70,9 @@ def mid_to_url(midint):
     result.reverse()
     return ''.join(result)
 
+
 if __name__ == '__main__':
     # mids=(3836011287357415,3835993520194649,3835942429582055,3836289931363076,3836288924666039)
     # for mid in mids:
-    #     print mid,mid_to_url(mid)
-    print mid_to_url(3836011287357415)
+    # print mid,mid_to_url(mid)
+    print encode_mid(3836011287357415)
