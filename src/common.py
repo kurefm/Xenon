@@ -20,10 +20,15 @@ HTTP_TIMEOUT = 15
 MID_MAX_LENGTH = 16
 MID_MIN_LENGTH = 16
 
-TIME_TYPE_1 = re.compile(r'^([0-9]|[0-5][0-9])[\D]+$')
-TIME_TYPE_2 = re.compile(r'^[\D]+([0-1][0-9]|2[0-3])\:([0-5][0-9])$')
-TIME_TYPE_3 = re.compile(r'^(0[0-9]|1[0-2])\-([0-2][0-9]|3[0-1]).([0-1][0-9]|2[0-3])\:([0-5][0-9])$')
-TIME_TYPE_4 = re.compile(r'^([0-9]{4})\-(0[0-9]|1[0-2])\-([0-2][0-9]|3[0-1]).([0-1][0-9]|2[0-3])\:([0-5][0-9])$')
+# Compile regex
+RE_TIME_TYPE_1 = re.compile(r'^([0-9]|[0-5][0-9])[\D]+$')
+RE_TIME_TYPE_2 = re.compile(r'^[\D]+([0-1][0-9]|2[0-3])\:([0-5][0-9])$')
+RE_TIME_TYPE_3 = re.compile(r'^(0[0-9]|1[0-2])\-([0-2][0-9]|3[0-1]).([0-1][0-9]|2[0-3])\:([0-5][0-9])$')
+RE_TIME_TYPE_4 = re.compile(r'^([0-9]{4})\-(0[0-9]|1[0-2])\-([0-2][0-9]|3[0-1]).([0-1][0-9]|2[0-3])\:([0-5][0-9])$')
+
+RE_MATCH_JSON_STR = re.compile(r'\\((u[0-9A-Fa-f]{4})|\S)')
+RE_MATCH_HTML_TAG = re.compile(r'<([A-Za-z][^\s>/]*)(?:[^>"\']|"[^"]*"|\'[^\']*\')*>([\s\S]+?)</\1>')
+
 
 
 # Control char convert table
@@ -74,19 +79,6 @@ def encode_mid(midint):
 
 def rnd():
     return int(time.time() * 1000 + random.random() * 10000)
-
-
-def unicode_hex_to_str(unicode_hex):
-    unicode_str = unicode_hex.group()
-    if len(unicode_str) == 2:
-        # len=2 is a char
-        try:
-            return CTRL_CHAR_TABLE[unicode_str]
-        except KeyError:
-            return unicode_str[1:]
-    if len(unicode_str) == 6:
-        # len=6 is a unicode char
-        return unicode_hex.group().decode('unicode_escape')
 
 
 class Section(object):
@@ -151,7 +143,7 @@ CONFIG = Configuration('config')
 
 def resolution_time(time_str):
     # n分钟前
-    match = re.match(TIME_TYPE_1, time_str)
+    match = re.match(RE_TIME_TYPE_1, time_str)
     if match:
         dt = datetime.datetime.now()
 
@@ -160,7 +152,7 @@ def resolution_time(time_str):
         return dt - delta
 
     # 今天 hour:minute
-    match = re.match(TIME_TYPE_2, time_str)
+    match = re.match(RE_TIME_TYPE_2, time_str)
     if match:
         dt = datetime.datetime.now()
 
@@ -170,7 +162,7 @@ def resolution_time(time_str):
         return dt.replace(hour=hour, minute=minute)
 
     # month-day hour:minute
-    match = re.match(TIME_TYPE_3, time_str)
+    match = re.match(RE_TIME_TYPE_3, time_str)
     if match:
         dt = datetime.datetime.now()
 
@@ -182,7 +174,7 @@ def resolution_time(time_str):
         return dt.replace(month=month, day=day, hour=hour, minute=minute)
 
     # year-month-day hour:minute
-    match = re.match(TIME_TYPE_4, time_str)
+    match = re.match(RE_TIME_TYPE_4, time_str)
     if match:
         dt = datetime.datetime.now()
 
@@ -197,14 +189,34 @@ def resolution_time(time_str):
         raise RuntimeError("Can't match {0}".format(time_str))
 
 
+def unicode_hex_to_str(unicode_hex):
+    unicode_str = unicode_hex.group()
+    if len(unicode_str) == 2:
+        # len=2 is a char
+        try:
+            return CTRL_CHAR_TABLE[unicode_str]
+        except KeyError:
+            return unicode_str[1:]
+    if len(unicode_str) == 6:
+        # len=6 is a unicode char
+        return unicode_hex.group().decode('unicode_escape')
+
+
 def weibo_blogs_convert(weibo_blogs):
-    return re.sub(r'\\((u[0-9A-Fa-f]{4})|\S)', unicode_hex_to_str, weibo_blogs)
+    return re.sub(RE_MATCH_JSON_STR, unicode_hex_to_str, weibo_blogs)
+
+
+def remove_tags(text):
+    return re.sub(RE_MATCH_HTML_TAG, r'\2', text)
 
 
 if __name__ == '__main__':
-    config = CONFIG
-    print config.app.name
-    config.app.editor = 'kure'
-    # config.add_section('language')
-    config.language.cn = '氙'
-    config.save()
+    # config = CONFIG
+    # print config.app.name
+    # config.app.editor = 'kure'
+    # # config.add_section('language')
+    # config.language.cn = '氙'
+    # config.save()
+
+    s = '520<i class="face face_2 icon_24">[心]</i> <a class="k" href="/k/%E7%99%BD%E7%AE%B1%E9%AD%94%E6%B3%95%E4%BD%BF?from=feed">#白箱魔法使#</a>'
+    print remove_tags(s).decode('utf-8')

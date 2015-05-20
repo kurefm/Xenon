@@ -485,6 +485,8 @@ class MobileWeiboCrawler(MobileWeiboLogin):
 
         html = response.text
 
+        print common.weibo_blogs_convert(html).encode('gbk','ignore')
+
         # 解析maxPage和url
         match = re.search(r'"maxPage":(\d+?),"page":\d+?,"url":"([^"]+?)"', html)
         max_page = match.group(1)
@@ -533,7 +535,7 @@ class MobileWeiboCrawler(MobileWeiboLogin):
             created_time = common.resolution_time(mblog[0])
             mid = mblog[1]
             uid = mblog[3]
-            content = mblog[2]
+            content = common.remove_tags(mblog[2])
             forwards_count = mblog[4]
             comments_count = mblog[5]
             like_count = mblog[6]
@@ -708,7 +710,7 @@ if __name__ == '__main__':
     with open('accounts', 'rb') as f:
         account = json.load(f)
 
-    account = account[5]
+    account = account[4]
     print account
     m = MobileWeiboCrawler(account['username'], account['password'])
     print m.check_login_status()
@@ -721,7 +723,7 @@ if __name__ == '__main__':
         data.insert_weibo(weibo_obj)
         print 'insert weibo {0} ok.'.format(weibo_obj.mid)
 
-    m.search('白箱', handler=insert)
+    m.search('白箱',handler=insert)
 
     # print common.weibo_blogs_convert(resp.text).encode('gbk','ignore')
 
