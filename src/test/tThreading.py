@@ -3,7 +3,6 @@
 
 import thread
 import time
-import packages.concurrent.futures as futures
 
 # 为线程定义一个函数
 def print_time(threadName, delay):
@@ -22,8 +21,6 @@ except:
 
 while 1:
     pass
-
-futures.Executor
 
 
 

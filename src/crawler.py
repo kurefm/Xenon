@@ -1,11 +1,16 @@
 # -*- coding: utf-8 -*-
 
+from __future__ import division
 import base64
 import json
 import re
 import binascii
-import os
 import datetime
+import time
+import threading
+import thread
+import sys
+import os
 import cPickle as pickle
 from packages import rsa
 from packages import requests
@@ -25,6 +30,7 @@ MOBILE_SEARCH_RESULT_URL = common.MOBILE_SEARCH_RESULT_URL
 MOBILE_SEARCH_URL = common.MOBILE_SEARCH_URL
 
 HTTP_TIMEOUT = common.HTTP_TIMEOUT
+PRE_SEC_ACCESS = common.PRE_SEC_ACCESS
 
 WEIBO_INFO_URL = 'http://weibo.com/aj/v6/{kind}/big'
 WEIBO_INFO_ACCEPT_KIND = ['comment', 'forward', 'like', 'simple']
@@ -33,26 +39,50 @@ WEIBO_INFO_ACCEPT_KIND = ['comment', 'forward', 'like', 'simple']
 RE_FIND_LOGIN_ERROR_INFO = re.compile(r'"retcode":"([^"]+?)","reason":"([^"]+?)"')
 RE_FIND_MID_UID_IN_SEARCH = re.compile(r'<?div[^>]*?mid=\\"(\d+?)\\"[^>]*?>[\s\S]*?usercard=\\"[^"]*?id=(\d*)[^"]*?\\"')
 RE_FIND_CONTENT_IN_WEIBO = re.compile(r'<?meta.*?content="(.*?)".*?name="description".*?/>')
-RE_FIND_TIME_IN_WEIBO = re.compile(r'')
+
+RE_FIND_MOBILE_WEIBO_INFO = re.compile(
+    r'"created_at":"([^"]+?)",[\s\S]*?"mid":"(\d+?)"[\s\S]*?"text":"([\s\S]+?)",[\s\S]*?"/u/(\d+?)"[\s\S]*?"reposts_count":(\d+),[\s\S]*?"comments_count":(\d+),[\s\S]*?"attitudes_count":(\d+),')
 
 
 class HttpOperation(Session):
     """继承Session，添加cookie保存到文件功能，添加一些常用的http头"""
 
-    def __init__(self, cookie_filename=None, default_headers=None):
-        self.default_headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.37 (KHTML, like Gecko) Chrome/42.0.2312.90 Safari/537.36',
+    def __init__(self, cookie_filename=None, default_headers=None, pre_sec_access=0):
+        """
+
+        :param cookie_filename:
+        :param default_headers:
+        :param access_limit: 每秒访问次数
+        :return:
+        """
+        default_headers = {
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 4.3; Nexus 7 Build/JSS15Q) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2307.2 Mobile Safari/537.36',
             'Accept-Language': 'zh-CN,zh;q=0.8,en-GB;q=0.6,en;q=0.4',
             'Accept-Encoding': 'gzip, deflate',
             'DNT': '1',
         } if not default_headers else default_headers
 
         self.cookie_filename = cookie_filename
+        self.__pre_sec_access = pre_sec_access
+        # 使用锁来限制访问评论
+        if pre_sec_access:
+            self.LOCK = threading.Lock()
+            self.__access_delay = 1 / pre_sec_access
+
+            def release_lock():
+                while 1:
+                    try:
+                        self.LOCK.release()
+                    except thread.error:
+                        pass
+                    time.sleep(self.__access_delay)
+
+            thread.start_new_thread(release_lock, ())
 
         super(HttpOperation, self).__init__()
 
         # 添加默认http头
-        self.headers.update(self.default_headers)
+        self.headers.update(default_headers)
 
     def get(self, url, timeout=HTTP_TIMEOUT, **kwargs):
         """
@@ -65,7 +95,18 @@ class HttpOperation(Session):
         """
         # 设定默认超时时间
         kwargs['timeout'] = timeout
-        return super(HttpOperation, self).get(url, **kwargs)
+        if self.__pre_sec_access:
+            self.LOCK.acquire()
+
+        import packages.requests.exceptions
+
+        try:
+            return super(HttpOperation, self).get(url, **kwargs)
+        except requests.exceptions.Timeout:
+            try:
+                return super(HttpOperation, self).get(url, **kwargs)
+            except requests.exceptions.Timeout:
+                return super(HttpOperation, self).get(url, **kwargs)
 
     def post(self, url, timeout=HTTP_TIMEOUT, **kwargs):
         """
@@ -76,16 +117,18 @@ class HttpOperation(Session):
         :return:it with return a response object
         """
         kwargs['timeout'] = timeout
+        if self.__pre_sec_access:
+            self.LOCK.acquire()
         return super(HttpOperation, self).post(url, **kwargs)
 
-    # 序列化RequestsCookieJar来保存cookie
     def load_cookie(self, filename=None):
+        # 序列化RequestsCookieJar来保存cookie
         cookie_filename = self.cookie_filename if not filename else filename
         with open(cookie_filename, 'rb') as cookie_file:
             self.cookies = pickle.load(cookie_file)
 
-    # 读取序列化的RequestsCookieJar对象
     def save_cookie(self, filename=None):
+        # 读取序列化的RequestsCookieJar对象
         cookie_filename = self.cookie_filename if not filename else filename
         with open(cookie_filename, 'wb') as cookie_file:
             pickle.dump(self.cookies, cookie_file)
@@ -98,7 +141,7 @@ class WeiboLogin(HttpOperation):
     _PRE_LOGIN_URL = _LOGIN_ROOT_URL + 'sso/prelogin.php'
     _LOGIN_URL = _LOGIN_ROOT_URL + 'sso/login.php?client=' + _CLIENT
 
-    def __init__(self, username, password):
+    def __init__(self, username, password, pre_sec_access=0):
         self.__prelogin_params = {
             'entry': 'account',
             'callback': 'sinaSSOController.preloginCallBack',
@@ -130,7 +173,8 @@ class WeiboLogin(HttpOperation):
             'setdomain': '1'
         }
         # 调用基类构造函数
-        super(WeiboLogin, self).__init__(os.path.join('cookies', '[%s].cookie' % username))
+        super(WeiboLogin, self).__init__(cookie_filename=os.path.join('cookies', '[%s].cookie' % username),
+                                         pre_sec_access=pre_sec_access)
 
         try:
             self.load_cookie()
@@ -232,10 +276,10 @@ class MobileWeiboLogin(HttpOperation):
         'hfp': '',
     }
 
-    def __init__(self, username, password):
+    def __init__(self, username, password, pre_sec_access=PRE_SEC_ACCESS):
         cookie_filename = os.path.join('cookies', '[%s].cookie' % username)
 
-        super(MobileWeiboLogin, self).__init__(cookie_filename, self._DEFAULT_HEADERS)
+        super(MobileWeiboLogin, self).__init__(cookie_filename, self._DEFAULT_HEADERS, pre_sec_access=pre_sec_access)
 
         try:
             self.load_cookie()
@@ -307,7 +351,6 @@ class WeiboCrawler(MobileWeiboLogin):
             # 执行页面处理程序
             handler(page)
 
-
     def search_page_handler(self, html, handler=None, limit=0):
         # 处理html得到uid和mid（WeiboRequest），作为参数传给handler
         handler = self.weibo_handler if not handler else handler
@@ -324,19 +367,6 @@ class WeiboCrawler(MobileWeiboLogin):
         # 请求微博页面，遍历转发，评论，点赞信息。
         html = self.get(weibo_request.url)
 
-        uid = weibo_request.uid
-        mid = weibo_request.mid
-        content = re.search(RE_FIND_CONTENT_IN_WEIBO, html, re.M).group(1)
-        time = re.search(RE_FIND_TIME_IN_WEIBO, html)
-
-        weibo = Weibo(uid, mid, content, time)
-
-        weibo.forward = self.travels_forward(mid)
-        weibo.comment = self.travels_comment(mid)
-        weibo.like = self.travels_like(mid)
-
-        return weibo
-
     def travels_forward(self, mid, handler=None):
         # 遍历转发，返回WeiboRequest列表
         # 使用ajax请求数据，每部分数据交由handler处理
@@ -434,74 +464,131 @@ class WeiboCrawler(MobileWeiboLogin):
         pass
 
 
-class MobileWeiboCrawler(MobileWeiboLogin):
-    def get_ajax(self, url, params):
-        return self.get(url, params=params, headers={'Content-Type': 'application/x-www-form-urlencoded'})
+counter = 0
 
+
+class MobileWeiboCrawler(MobileWeiboLogin):
     def search(self, key, kind='wb', handler=None, limit=0, is_return=True):
         # kind在移动版里面可选微博（wb），所有（all），用户（user）
-        # 搜索得到每页微博的html，作为参数传给handler
+        # handler为微博处理程序，接受参数为weibo对象
         kind = kind.lower()
 
-        handler = self.search_page_handler if not handler else handler
+        handler = self.weibo_handler if not handler else handler
 
-        params = {'type': kind, 'queryVal': compat.quote(key)}
+        params = {'type': kind, 'queryVal': key}
 
         # 请求页面
         response = self.get(MOBILE_SEARCH_RESULT_URL, params=params, headers={'Referer': MOBILE_SEARCH_URL})
 
-        print response.url
         html = response.text
-        # html=common.weibo_blogs_convert(html)
-        with open('1.html', 'wb') as fp:
-            fp.write(html.encode('utf-8', 'ignore'))
 
-        blog_urls = re.findall(r'"mid":"(\d{16})"[\s\S]+?"\\/u\\/(\d+?)"', html)
+        # 解析maxPage和url
+        match = re.search(r'"maxPage":(\d+?),"page":\d+?,"url":"([^"]+?)"', html)
+        max_page = match.group(1)
+        url = match.group(2).replace('\\', '')
 
-        for (mid, uid) in blog_urls:
-            wq = WeiboRequest(uid, mid)
-            print wq.murl
+        # ajax请求附加http头
+        headers = {'Content-Type': 'application/x-www-form-urlencoded', 'Referer': response.url,
+                   'X-Requested-With': 'XMLHttpRequest'}
 
+        # 第一页是html内容
+        # self.search_html_handler(html, handler)
 
+        # 兼容处理html
+        self.search_ajax_handler(html, handler)
 
+        # 遍历数据
+        for page_num in range(2, int(max_page) + 1):
+            # 拼接ajax请求
+            req_url = '{0}{1}&page={2}'.format(MOBILE_WEIBO_URL, url, page_num)
+            # 解析json
+            json_str = self.get(req_url, headers=headers).text
+            # 调用处理程序
+            self.search_ajax_handler(json_str, handler)
 
-        # 执行页面处理程序
-        # handler(page)
+    def search_html_handler(self, html, handler=None):
+        # 处理html得到Weibo Object，作为参数传给handler
+        handler = self.weibo_handler if not handler else handler
 
-        page_urls = []
-        # 正则查找所有页面
-
-        # for page_url in page_urls:
-        # page = self.get(page_url, headers={'Referer': key_search_url}).text
-        # # 执行页面处理程序
-        # handler(page)
-
-
-    def search_page_handler(self, html, handler=None, limit=0):
-        # 处理html得到uid和mid（WeiboRequest），作为参数传给handler
-        handler = self.get_weibo if not handler else handler
-
-        blog_ids = re.findall(RE_FIND_MID_UID_IN_SEARCH, html)
+        blog_ids = re.findall(r'"mblog":[\s\S]+?"mid":"(\d+?)"[\s\S]+?"\\/u\\/(\d+?)"', html)
 
         for (mid, uid) in blog_ids:
             handler(WeiboRequest(uid, mid))
 
+    def search_ajax_handler(self, json_str, handler=None):
+        # 处理json得到Weibo Object，作为参数传给handler
+        handler = self.weibo_handler if not handler else handler
+
+
+        json_str=common.weibo_blogs_convert(json_str)
+
+        mblog_list = re.findall(RE_FIND_MOBILE_WEIBO_INFO, json_str)
+
+        if not mblog_list:
+            raise RuntimeError("Can't find weibo info.")
+
+        for mblog in mblog_list:
+            created_time = common.resolution_time(mblog[0])
+            mid = mblog[1]
+            uid = mblog[3]
+            content = mblog[2]
+            forwards_count = mblog[4]
+            comments_count = mblog[5]
+            like_count = mblog[6]
+
+            handler(Weibo(uid, mid, content, created_time, forward_num=forwards_count, comment_num=comments_count,
+                          like_num=like_count))
+
+            # mblogs = json_dict['cards']
+            # for mblog in mblogs:
+            #     info = mblog['card_group'][0]['mblog']
+            #     mid = info['id']
+            #     uid = info['user']['id']
+            #     handler(WeiboRequest(uid, mid))
+
     def get_weibo(self, weibo_request):
+        r = self.get(weibo_request.murl)
+        html = common.weibo_blogs_convert(r.text)
+        match = re.search(RE_FIND_MOBILE_WEIBO_INFO, html)
+        if not match:
+            print html
+            print weibo_request.murl
+            raise RuntimeError('Weibo info no find.')
+        if match.lastindex != 5:
+            raise RuntimeError('Weibo info match error, url={0}.'.format(weibo_request.murl))
+
+        created_time = common.resolution_time(match.group(1))
+        forward_count = match.group(2)
+        comments_count = match.group(3)
+        like_count = match.group(4)
+        content = match.group(5)
+
+        weibo = Weibo(weibo_request.uid, weibo_request.mid, content, created_time, forward_num=forward_count,
+                      comment_num=comments_count, like_num=like_count)
+        global counter
+        counter += 1
+        print counter
+        print weibo.timestamp, '{0}/{1}'.format(weibo.uid, weibo.mid), weibo.content
+
         # 请求微博页面，遍历转发，评论，点赞信息。
-        html = self.get(weibo_request.url)
+        # html = self.get(weibo_request.url)
 
-        uid = weibo_request.uid
-        mid = weibo_request.mid
-        content = re.search(RE_FIND_CONTENT_IN_WEIBO, html, re.M).group(1)
-        time = re.search(RE_FIND_TIME_IN_WEIBO, html)
+        # uid = weibo_request.uid
+        # mid = weibo_request.mid
+        # content = re.search(RE_FIND_CONTENT_IN_WEIBO, html, re.M).group(1)
+        # time = re.search(RE_FIND_TIME_IN_WEIBO, html)
+        #
+        # weibo = Weibo(uid, mid, content, time)
+        #
+        # weibo.forward = self.travels_forward(mid)
+        # weibo.comment = self.travels_comment(mid)
+        # weibo.like = self.travels_like(mid)
+        #
+        # return weibo
 
-        weibo = Weibo(uid, mid, content, time)
+    def weibo_handler(self, weibo_obj):
+        print weibo_obj.time, weibo_obj.mid, weibo_obj.content.encode(sys.getfilesystemencoding(),'ignore')
 
-        weibo.forward = self.travels_forward(mid)
-        weibo.comment = self.travels_comment(mid)
-        weibo.like = self.travels_like(mid)
-
-        return weibo
 
     def travels_forward(self, mid, handler=None):
         # 遍历转发，返回WeiboRequest列表
@@ -600,25 +687,42 @@ class MobileWeiboCrawler(MobileWeiboLogin):
         pass
 
 
+class WeiboStatelessCrawler(object):
+    """无状态爬虫，依靠tw.weibo.com，只能爬取微博内容以及指定用户的所有微博"""
+    ROOT_URL = 'http://tw.weibo.com'
+    HEADERS = {
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 4.3; Nexus 7 Build/JSS15Q) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2307.2 Mobile Safari/537.36',
+        'Accept-Language': 'zh-CN,zh;q=0.8,en-GB;q=0.6,en;q=0.4',
+        'Accept-Encoding': 'gzip, deflate',
+        'DNT': '1',
+    }
+
+    def get_weibo(self, weibo_request):
+        url = '{0}/{1}/{2}'.format(self.ROOT_URL, weibo_request.uid, weibo_request.mid)
+        response = requests.get(url, headers=self.HEADERS, timeout=HTTP_TIMEOUT)
+
+
 if __name__ == '__main__':
     account = None
-    with open('accounts', 'rb') as f:
-        f.readline()
-        account = f.readline().split(',')
-    if account:
-        print account
-        m = WeiboCrawler(account[0], account[1])
-        print m.check_login_status()
+    with open('accounts.json', 'rb') as f:
+        account = json.load(f)
 
-        # print m.get(WEIBO_URL).text.encode('gbk','ignore')
+    account = account[0]
+    print account
+    m = MobileWeiboCrawler(account['username'], account['password'])
+    print m.check_login_status()
 
-        # m.search('红旗')
+    input_str = ''
 
+    # while (1):
+    # input_str = raw_input('>')
+    # try:
+    # r = m.get(input_str)
+    # print r.text
+    # print common.weibo_blogs_convert(r.text)
+    # except Exception as e:
+    # print e
 
-        # print w.search('白箱')
-        # print
-        # print w.check_login_state()
-        # blog_requests = w.search('白箱')
-        # w.get_weibo(blog_requests[0])
-        # for blog_request in blog_requests:
-        # w.get_weibo(blog_request)
+    # print m.get(WEIBO_URL).text.encode('gbk','ignore')
+
+    m.search('白箱')

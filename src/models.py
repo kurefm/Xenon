@@ -13,8 +13,8 @@ class WeiboRequest(object):
     def __init__(self, uid, mid):
         self.uid = uid if isinstance(uid, int) else int(uid)
         self.mid = mid if isinstance(mid, int) else int(mid)
-        self.url = '%s%d/%s' % (common.WEIBO_URL, self.uid, common.encode_mid(self.mid))
-        self.murl = '%s%d/%s' % (common.MOBILE_WEIBO_URL, self.uid, common.encode_mid(self.mid))
+        self.url = '%s/%d/%s' % (common.WEIBO_URL, self.uid, common.encode_mid(self.mid))
+        self.murl = '%s/%d/%s' % (common.MOBILE_WEIBO_URL, self.uid, common.encode_mid(self.mid))
 
     def __repr__(self):
         return '<WeiboRequest %s>' % self.url
@@ -34,7 +34,7 @@ class Weibo(WeiboRequest):
         构造函数，构造一个微博对象。一条微博必要的字段是uid、mid和context。
         :param uid: user id
         :param mid: micro-blog id
-        :param context: 微博正文
+        :param content: 微博正文
         :param extra: 微博附带的其他东西，比如image,video,url,paper,other micro-blog,user。
         :param forward: 转发
         :param comment: 评论
@@ -42,7 +42,7 @@ class Weibo(WeiboRequest):
         :return:
         """
         super(Weibo, self).__init__(uid, mid)
-        self.content = content if isinstance(content, str) else str(content)
+        self.content = content
         self.time = time
         self.timestamp = datetime.datetime.now() if not timestamp else timestamp
         self.extra = extra
