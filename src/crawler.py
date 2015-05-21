@@ -723,7 +723,7 @@ if __name__ == '__main__':
         data.insert_weibo(weibo_obj)
         print 'insert weibo {0} ok.'.format(weibo_obj.mid)
 
-    m.search('白箱',handler=insert)
+    m.search('桂林电子',handler=insert)
 
     # print common.weibo_blogs_convert(resp.text).encode('gbk','ignore')
 

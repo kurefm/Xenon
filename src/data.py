@@ -60,6 +60,7 @@ def insert_weibo(Weibo):
     args = (str(Weibo.mid), Weibo.content, Weibo.time, Weibo.timestamp, Weibo.extra, Weibo.forward_num, Weibo.comment_num,
             Weibo.like_num)
     insert_basic_function(sql, args)
+    __insert_user_weibo(Weibo.uid,Weibo.mid)
 
 
 #   评论表
