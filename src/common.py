@@ -13,7 +13,7 @@ SEARCH_URL = 'http://s.weibo.com/'
 MOBILE_SEARCH_RESULT_URL = 'http://m.weibo.cn/searchs/result'
 MOBILE_SEARCH_URL = 'http://m.weibo.cn/searchs'
 
-PRE_SEC_ACCESS = 0.33
+PRE_SEC_ACCESS = 0.1
 
 HTTP_TIMEOUT = 15
 
@@ -27,7 +27,7 @@ RE_TIME_TYPE_3 = re.compile(r'^(0[0-9]|1[0-2])\-([0-2][0-9]|3[0-1]).([0-1][0-9]|
 RE_TIME_TYPE_4 = re.compile(r'^([0-9]{4})\-(0[0-9]|1[0-2])\-([0-2][0-9]|3[0-1]).([0-1][0-9]|2[0-3])\:([0-5][0-9])$')
 
 RE_MATCH_JSON_STR = re.compile(r'\\((u[0-9A-Fa-f]{4})|\S)')
-RE_MATCH_HTML_TAG = re.compile(r'<([A-Za-z][^\s>/]*)(?:[^>"\']|"[^"]*"|\'[^\']*\')*>([\s\S]+?)</\1>')
+RE_MATCH_HTML_TAG = re.compile(r'</?([A-Za-z][^\s>/]*)(?:[^>"\']|"[^"]*"|\'[^\']*\')*>')
 
 
 
@@ -202,12 +202,12 @@ def unicode_hex_to_str(unicode_hex):
         return unicode_hex.group().decode('unicode_escape')
 
 
-def weibo_blogs_convert(weibo_blogs):
-    return re.sub(RE_MATCH_JSON_STR, unicode_hex_to_str, weibo_blogs)
+def json2str(text):
+    return re.sub(RE_MATCH_JSON_STR, unicode_hex_to_str, text)
 
 
 def remove_tags(text):
-    return re.sub(RE_MATCH_HTML_TAG, r'\2', text)
+    return re.sub(RE_MATCH_HTML_TAG, '', text)
 
 
 if __name__ == '__main__':
@@ -218,5 +218,5 @@ if __name__ == '__main__':
     # config.language.cn = '氙'
     # config.save()
 
-    s = '520<i class="face face_2 icon_24">[心]</i> <a class="k" href="/k/%E7%99%BD%E7%AE%B1%E9%AD%94%E6%B3%95%E4%BD%BF?from=feed">#白箱魔法使#</a>'
-    print remove_tags(s).decode('utf-8')
+    s = u'出现了！白箱名言:万策尽きたー <a data-url=\"http://t.cn/z82bvSK\" href=\"http://m.weibo.cn/p/index?containerid=100101B2094650DB6EA5FF459E&ep=CiQvw0D4C%2C1405768371%2CCiQvw0D4C%2C1405768371\" class=\"btn btn-normal btn-surl\"><i class=\"iconimg iconimg-xxs\"><img src=\"http://u1.sinaimg.cn/upload/2014/10/16/timeline_card_small_location_default.png\"></i><span class=\"surl-text\">建安小区</span></a>'
+    print remove_tags(s).encode('gbk', 'ignore')

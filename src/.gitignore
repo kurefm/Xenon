@@ -11,4 +11,5 @@
 .idea
 
 # ignore account list
-accounts.json
+accounts.*
+accounts

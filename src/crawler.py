@@ -233,7 +233,7 @@ class WeiboLogin(HttpOperation):
         # 检查是否存在登陆错误
         error = re.search(RE_FIND_LOGIN_ERROR_INFO, html.text)
         if error:
-            error_msg = common.weibo_blogs_convert(error.group(0))
+            error_msg = common.json2str(error.group(0))
             raise LoginError(error_msg)
 
         urls = re.findall(r'\"((http|https)[\s\S]+?)\"', html)
@@ -485,10 +485,11 @@ class MobileWeiboCrawler(MobileWeiboLogin):
 
         html = response.text
 
-        print common.weibo_blogs_convert(html).encode('gbk','ignore')
-
         # 解析maxPage和url
         match = re.search(r'"maxPage":(\d+?),"page":\d+?,"url":"([^"]+?)"', html)
+        if not match:
+            print html
+            print '账号异常'
         max_page = match.group(1)
         url = match.group(2).replace('\\', '')
 
@@ -515,7 +516,7 @@ class MobileWeiboCrawler(MobileWeiboLogin):
         # 处理html得到Weibo Object，作为参数传给handler
         handler = self.weibo_handler if not handler else handler
 
-        blog_ids = re.findall(r'"mblog":[\s\S]+?"mid":"(\d+?)"[\s\S]+?"\\/u\\/(\d+?)"', html)
+        blog_ids = re.findall(r'"mblog":[\s\S]+?"mid":"(\d+?)"[\s\S]*?"\\/u\\/(\d+?)"', html)
 
         for (mid, uid) in blog_ids:
             handler(WeiboRequest(uid, mid))
@@ -524,14 +525,16 @@ class MobileWeiboCrawler(MobileWeiboLogin):
         # 处理json得到Weibo Object，作为参数传给handler
         handler = self.weibo_handler if not handler else handler
 
-        json_str = common.weibo_blogs_convert(json_str)
+        json_str = common.json2str(json_str)
 
         mblog_list = re.findall(RE_FIND_MOBILE_WEIBO_INFO, json_str)
 
         if not mblog_list:
+            print json_str
             raise RuntimeError("Can't find weibo info.")
 
         for mblog in mblog_list:
+
             created_time = common.resolution_time(mblog[0])
             mid = mblog[1]
             uid = mblog[3]
@@ -552,7 +555,7 @@ class MobileWeiboCrawler(MobileWeiboLogin):
 
     def get_weibo(self, weibo_request):
         r = self.get(weibo_request.murl)
-        html = common.weibo_blogs_convert(r.text)
+        html = common.json2str(r.text)
         match = re.search(RE_FIND_MOBILE_WEIBO_INFO, html)
         if not match:
             print html
@@ -710,7 +713,7 @@ if __name__ == '__main__':
     with open('accounts', 'rb') as f:
         account = json.load(f)
 
-    account = account[4]
+    account = account[0]
     print account
     m = MobileWeiboCrawler(account['username'], account['password'])
     print m.check_login_status()
