@@ -6,6 +6,67 @@ import time
 import datetime
 import re
 
+
+class Section(object):
+    def __init__(self, config_obj, section):
+        if section not in config_obj.sections():
+            from errors import NoSectionError
+
+            raise NoSectionError('No section: %s' % section)
+        super(Section, self).__init__()
+        self.__dict__['config'] = config_obj
+        self.__dict__['section'] = section
+
+    def __getattr__(self, option):
+        return self.config.get(self.section, option)
+
+    def __setattr__(self, option, value):
+        self.config.set(self.section, option, value)
+
+    def __iter__(self):
+        return self.config.options(self.section).__iter__()
+
+
+from ConfigParser import ConfigParser
+
+
+class Configuration(ConfigParser):
+    def __init__(self, filename):
+        ConfigParser.__init__(self)
+        self.filename = filename
+        self.read(filename)
+
+    def __del__(self):
+        self.save()
+
+    def __getattr__(self, section):
+        return Section(self, section)
+
+    def __iter__(self):
+        return self.sections().__iter__()
+
+    def __str__(self):
+        return '<Configuration Object>'
+
+    def __repr__(self):
+        self.__str__(self)
+
+    def __dir__(self):
+        return dir(ConfigParser) + ['filename', 'save', 'reload']
+
+    def reload(self, filename=None):
+        self.read(filename)
+
+    def save(self, filename=None):
+        filename = self.filename if not filename else filename
+
+        with open(filename, 'wb') as fp:
+            self.write(fp)
+
+# 全局配置
+CONFIG = Configuration('config')
+
+
 # Define something common constants
 WEIBO_URL = 'http://weibo.com'
 MOBILE_WEIBO_URL = 'http://m.weibo.cn'
@@ -13,9 +74,15 @@ SEARCH_URL = 'http://s.weibo.com/'
 MOBILE_SEARCH_RESULT_URL = 'http://m.weibo.cn/searchs/result'
 MOBILE_SEARCH_URL = 'http://m.weibo.cn/searchs'
 
-PRE_SEC_ACCESS = 0.1
+PRE_SEC_ACCESS = float(CONFIG.crawler.pre_sec_access)
 
-HTTP_TIMEOUT = 15
+HTTP_TIMEOUT = float(CONFIG.crawler.timeout)
+HTTP_TIMEOUT_WAIT = float(CONFIG.crawler.timeout_wait)
+HTTP_TIMEOUT_RETRY_TIMES = int(CONFIG.crawler.timeout_retry_times)
+
+HTTP_CONNECTION_ERROR_WAIT = float(CONFIG.crawler.connection_error_wait)
+
+SEARCH_PAGE_ERROR_WAIT = float(CONFIG.xenon.search_page_error_wait)
 
 MID_MAX_LENGTH = 16
 MID_MIN_LENGTH = 16
@@ -79,66 +146,6 @@ def encode_mid(midint):
 
 def rnd():
     return int(time.time() * 1000 + random.random() * 10000)
-
-
-class Section(object):
-    def __init__(self, config_obj, section):
-        if section not in config_obj.sections():
-            from errors import NoSectionError
-
-            raise NoSectionError('No section: %s' % section)
-        super(Section, self).__init__()
-        self.__dict__['config'] = config_obj
-        self.__dict__['section'] = section
-
-    def __getattr__(self, option):
-        return self.config.get(self.section, option)
-
-    def __setattr__(self, option, value):
-        self.config.set(self.section, option, value)
-
-    def __iter__(self):
-        return self.config.options(self.section).__iter__()
-
-
-from ConfigParser import ConfigParser
-
-
-class Configuration(ConfigParser):
-    def __init__(self, filename):
-        ConfigParser.__init__(self)
-        self.filename = filename
-        self.read(filename)
-
-    def __del__(self):
-        self.save()
-
-    def __getattr__(self, section):
-        return Section(self, section)
-
-    def __iter__(self):
-        return self.sections().__iter__()
-
-    def __str__(self):
-        return '<Configuration Object>'
-
-    def __repr__(self):
-        self.__str__(self)
-
-    def __dir__(self):
-        return dir(ConfigParser) + ['filename', 'save', 'reload']
-
-    def reload(self, filename=None):
-        self.read(filename)
-
-    def save(self, filename=None):
-        filename = self.filename if not filename else filename
-
-        with open(filename, 'wb') as fp:
-            self.write(fp)
-
-# 全局配置
-CONFIG = Configuration('config')
 
 
 def resolution_time(time_str):

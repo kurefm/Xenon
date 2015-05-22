@@ -20,7 +20,7 @@ import common
 import data
 from models import WeiboRequest
 from models import Weibo
-from errors import LoginError
+import errors
 
 
 # define
@@ -31,6 +31,11 @@ MOBILE_SEARCH_RESULT_URL = common.MOBILE_SEARCH_RESULT_URL
 MOBILE_SEARCH_URL = common.MOBILE_SEARCH_URL
 
 HTTP_TIMEOUT = common.HTTP_TIMEOUT
+HTTP_TIMEOUT_WAIT = common.HTTP_TIMEOUT_WAIT
+HTTP_TIME_OUT_RETRY_TIMES = common.HTTP_TIMEOUT_RETRY_TIMES
+
+HTTP_CONNECTION_ERROR_WAIT = common.HTTP_CONNECTION_ERROR_WAIT
+
 PRE_SEC_ACCESS = common.PRE_SEC_ACCESS
 
 WEIBO_INFO_URL = 'http://weibo.com/aj/v6/{kind}/big'
@@ -42,7 +47,9 @@ RE_FIND_MID_UID_IN_SEARCH = re.compile(r'<?div[^>]*?mid=\\"(\d+?)\\"[^>]*?>[\s\S
 RE_FIND_CONTENT_IN_WEIBO = re.compile(r'<?meta.*?content="(.*?)".*?name="description".*?/>')
 
 RE_FIND_MOBILE_WEIBO_INFO = re.compile(
-    r'"created_at":"([^"]+?)",[\s\S]*?"mid":"(\d+?)"[\s\S]*?"text":"([\s\S]+?)",[\s\S]*?"/u/(\d+?)"[\s\S]*?"reposts_count":(\d+),[\s\S]*?"comments_count":(\d+),[\s\S]*?"attitudes_count":(\d+),')
+    r'"created_at":"([^"]+?)",[\s\S]*?"id":(\d+?),[\s\S]*?"text":"([\s\S]+?)",[\s\S]*?"/u/(\d+?)"[\s\S]*?"reposts_count":(\d+),[\s\S]*?"comments_count":(\d+),[\s\S]*?"attitudes_count":(\d+),')
+
+RE_FIND_HOT_WORDS = re.compile(r'hotword[\s\S]*?desc":"([\s\S]+?)"')
 
 
 class HttpOperation(Session):
@@ -86,41 +93,53 @@ class HttpOperation(Session):
         self.headers.update(default_headers)
 
     def get(self, url, timeout=HTTP_TIMEOUT, **kwargs):
-        """
-        Use get method to request page
-        :param url: witch url do you want to request
-        :param params: append params in request
-        :param headers: append headers in request
-        :param timeout:
-        :return: it with return a response object
-        """
+
         # 设定默认超时时间
         kwargs['timeout'] = timeout
         if self.__pre_sec_access:
             self.LOCK.acquire()
 
-        import packages.requests.exceptions
-
-        try:
-            return super(HttpOperation, self).get(url, **kwargs)
-        except requests.exceptions.Timeout:
+        timeout_count = HTTP_TIME_OUT_RETRY_TIMES
+        while (1):
             try:
                 return super(HttpOperation, self).get(url, **kwargs)
-            except requests.exceptions.Timeout:
-                return super(HttpOperation, self).get(url, **kwargs)
+            except requests.exceptions.Timeout as to:
+                print u'Connect Timeout!', to.message
+                timeout_count -= 1
+                if not timeout_count:
+                    print u'Connect Timeout {0} Times, Abandon url:{1}'.format(HTTP_TIME_OUT_RETRY_TIMES, url)
+                    raise errors.TimeOutError()
+                else:
+                    print u'Waiting {0} seconds'.format(HTTP_TIMEOUT_WAIT)
+                    time.sleep(HTTP_TIMEOUT_WAIT)
+            except requests.exceptions.ConnectionError as ce:
+                print u'Connection Error!', ce.message
+                print u'Waiting {0} seconds'.format(HTTP_CONNECTION_ERROR_WAIT)
+                time.sleep(HTTP_CONNECTION_ERROR_WAIT)
 
     def post(self, url, timeout=HTTP_TIMEOUT, **kwargs):
-        """
-        Use post method to request page
-        :param url:witch url do you want to request
-        :param params:append params in request
-        :param headers:append headers in request
-        :return:it with return a response object
-        """
+
         kwargs['timeout'] = timeout
         if self.__pre_sec_access:
             self.LOCK.acquire()
-        return super(HttpOperation, self).post(url, **kwargs)
+
+        timeout_count = HTTP_TIME_OUT_RETRY_TIMES
+        while (1):
+            try:
+                return super(HttpOperation, self).post(url, **kwargs)
+            except requests.exceptions.Timeout as to:
+                print u'Connect Timeout!', to.message
+                timeout_count -= 1
+                if not timeout_count:
+                    print u'Connect Timeout {0} Times, Abandon url:{1}'.format(HTTP_TIME_OUT_RETRY_TIMES, url)
+                    raise errors.TimeOutError()
+                else:
+                    print u'Waiting {0} seconds'.format(HTTP_TIMEOUT_WAIT)
+                    time.sleep(HTTP_TIMEOUT_WAIT)
+            except requests.exceptions.ConnectionError as ce:
+                print u'Connection Error!', ce.message
+                print u'Waiting {0} seconds'.format(HTTP_CONNECTION_ERROR_WAIT)
+                time.sleep(HTTP_CONNECTION_ERROR_WAIT)
 
     def load_cookie(self, filename=None):
         # 序列化RequestsCookieJar来保存cookie
@@ -234,7 +253,7 @@ class WeiboLogin(HttpOperation):
         error = re.search(RE_FIND_LOGIN_ERROR_INFO, html.text)
         if error:
             error_msg = common.json2str(error.group(0))
-            raise LoginError(error_msg)
+            raise errors.LoginError(error_msg)
 
         urls = re.findall(r'\"((http|https)[\s\S]+?)\"', html)
         for url in urls:
@@ -467,50 +486,63 @@ class WeiboCrawler(MobileWeiboLogin):
         pass
 
 
-counter = 0
-
-
 class MobileWeiboCrawler(MobileWeiboLogin):
-    def search(self, key, kind='wb', handler=None, limit=0, is_return=True):
+    def search(self, key, kind='wb', handler=None, start_at=1):
         # kind在移动版里面可选微博（wb），所有（all），用户（user）
+
+        if start_at < 0 | start_at > 100:
+            raise errors.SearchStartAtError("You can't start at page {0}.".format(start_at))
+
         # handler为微博处理程序，接受参数为weibo对象
         kind = kind.lower()
 
         handler = self.weibo_handler if not handler else handler
+
+        key = key.decode(sys.getfilesystemencoding()).encode('utf-8') if isinstance(key, str) else key.encode('utf-8')
 
         params = {'type': kind, 'queryVal': key}
 
         # 请求页面
         response = self.get(MOBILE_SEARCH_RESULT_URL, params=params, headers={'Referer': MOBILE_SEARCH_URL})
 
-        html = response.text
+        try:
+            html = response.text
+        except errors.TimeOutError as toe:
+            raise errors.SearchPageError(start_at, toe)
 
         # 解析maxPage和url
         match = re.search(r'"maxPage":(\d+?),"page":\d+?,"url":"([^"]+?)"', html)
         if not match:
-            print html
-            print '账号异常'
+            raise errors.SearchPageError(start_at)
         max_page = match.group(1)
+
+        if start_at > max_page:
+            raise errors.SearchStartAtError("The max page is , you can't start at page {0}.".format(max_page, start_at))
+
         url = match.group(2).replace('\\', '')
 
         # ajax请求附加http头
         headers = {'Content-Type': 'application/x-www-form-urlencoded', 'Referer': response.url,
                    'X-Requested-With': 'XMLHttpRequest'}
 
-        # 第一页是html内容
-        # self.search_html_handler(html, handler)
-
-        # 兼容处理html
-        self.search_ajax_handler(html, handler)
-
         # 遍历数据
-        for page_num in range(2, int(max_page) + 1):
-            # 拼接ajax请求
-            req_url = '{0}{1}&page={2}'.format(MOBILE_WEIBO_URL, url, page_num)
-            # 解析json
-            json_str = self.get(req_url, headers=headers).text
+        for page_num in range(start_at, int(max_page) + 1):
+            json_str = ''
+
+            if page_num == 1:
+                json_str = html
+            else:
+                req_url = '{0}{1}&page={2}'.format(MOBILE_WEIBO_URL, url, page_num)
+                try:
+                    # 获取json
+                    json_str = self.get(req_url, headers=headers).text
+                except errors.TimeOutError as toe:
+                    raise errors.SearchPageError(page_num, toe)
             # 调用处理程序
-            self.search_ajax_handler(json_str, handler)
+            try:
+                self.search_ajax_handler(json_str, handler)
+            except errors.SearchPageResolveError as spre:
+                raise errors.SearchPageError(page_num, spre)
 
     def search_html_handler(self, html, handler=None):
         # 处理html得到Weibo Object，作为参数传给handler
@@ -530,11 +562,9 @@ class MobileWeiboCrawler(MobileWeiboLogin):
         mblog_list = re.findall(RE_FIND_MOBILE_WEIBO_INFO, json_str)
 
         if not mblog_list:
-            print json_str
-            raise RuntimeError("Can't find weibo info.")
+            raise errors.SearchPageResolveError()
 
         for mblog in mblog_list:
-
             created_time = common.resolution_time(mblog[0])
             mid = mblog[1]
             uid = mblog[3]
@@ -545,13 +575,6 @@ class MobileWeiboCrawler(MobileWeiboLogin):
 
             handler(Weibo(uid, mid, content, created_time, forward_num=forwards_count, comment_num=comments_count,
                           like_num=like_count))
-
-            # mblogs = json_dict['cards']
-            # for mblog in mblogs:
-            #     info = mblog['card_group'][0]['mblog']
-            #     mid = info['id']
-            #     uid = info['user']['id']
-            #     handler(WeiboRequest(uid, mid))
 
     def get_weibo(self, weibo_request):
         r = self.get(weibo_request.murl)
@@ -692,6 +715,26 @@ class MobileWeiboCrawler(MobileWeiboLogin):
         # 处理每页ajax数据，得到uid列表
         pass
 
+    def get_host_word(self):
+        # 返回热词tuple
+
+        # ajax请求附加http头
+        headers = {'Content-Type': 'application/x-www-form-urlencoded', 'Referer': MOBILE_WEIBO_URL,
+                   'X-Requested-With': 'XMLHttpRequest'}
+        try:
+            json_dict = self.get('http://m.weibo.cn/page/pagejson?containerid=106003type=1', headers=headers).json()
+            req_url = json_dict['cards'][0]['card_group'][0]['scheme']
+            html = self.get(req_url, headers=headers).text
+            html = common.json2str(html)
+            hot_words = re.findall(RE_FIND_HOT_WORDS, html)
+            return hot_words
+        except errors.TimeOutError as toe:
+            raise errors.GetHostWordsError('Request timeout.', toe)
+        except ValueError as ve:
+            raise errors.GetHostWordsError("Can't resolve json.", ve)
+        except KeyError as ke:
+            raise errors.GetHostWordsError("Can't find hot words access url.", ke)
+
 
 class WeiboStatelessCrawler(object):
     """无状态爬虫，依靠tw.weibo.com，只能爬取微博内容以及指定用户的所有微博"""
@@ -713,24 +756,21 @@ if __name__ == '__main__':
     with open('accounts', 'rb') as f:
         account = json.load(f)
 
-    account = account[0]
+    account = account[2]
     print account
     m = MobileWeiboCrawler(account['username'], account['password'])
     print m.check_login_status()
 
-    resp = m.get(
-        'http://m.weibo.cn/p/index?containerid=100103type%3D25%26q%3D%26cat%3Drealtimehot%26t%3D&title=%E5%AE%9E%E6%97%B6%E7%83%AD%E6%90%9C%E6%A6%9C&uid=5601875006')
-
-    def insert(weibo_obj):
-        print 'start insert {0}.'.format(weibo_obj.mid)
-        data.insert_weibo(weibo_obj)
-        print 'insert weibo {0} ok.'.format(weibo_obj.mid)
-
-    m.search('白箱',handler=insert)
+    # def insert(weibo_obj):
+    #     print 'start insert {0}.'.format(weibo_obj.mid)
+    #     data.insert_weibo(weibo_obj)
+    #     print 'insert weibo {0} ok.'.format(weibo_obj.mid)
+    #
+    # m.search('白箱', handler=insert)
 
     # print common.weibo_blogs_convert(resp.text).encode('gbk','ignore')
 
-    input_str = ''
+    # input_str = ''
 
     # while (1):
     # input_str = raw_input('>')
@@ -742,5 +782,3 @@ if __name__ == '__main__':
     # print e
 
     # print m.get(WEIBO_URL).text.encode('gbk','ignore')
-
-    #

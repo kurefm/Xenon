@@ -1,9 +1,12 @@
-[app]
-name = xenon
-editor = kure
+[crawler]
+pre_sec_access = 0.15
+timeout = 15
+timeout_wait = 60
+timeout_retry_times = 5
+connection_error_wait = 120
 
-[connect]
-ip = 192.168.1.1
+[xenon]
+search_page_error_wait = 600
 
 [DB]
 host = 192.168.109.140
