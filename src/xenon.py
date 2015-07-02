@@ -46,7 +46,7 @@ def check(*args, **kwargs):
 
 def insert(weibo_obj):
     data.insert_weibo(weibo_obj)
-    print_info(u'Insert weibo {0} ok. Context is {1}'.format(weibo_obj.mid, weibo_obj.content))
+    print_info(u'Insert weibo {0} ok. uid is {2}. Context is {1}'.format(weibo_obj.mid, weibo_obj.content,weibo_obj.uid))
 
 
 def search(*args, **kwargs):
@@ -98,7 +98,6 @@ if __name__ == '__main__':
     print_info('Creating crawler')
     init_crawler_list()
     print_info('Crawler init finish')
-    # init_crawler_list()
     while (1):
         command = raw_input('XENON>').decode(sys.getfilesystemencoding()).lower().strip()
 

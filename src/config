@@ -9,7 +9,7 @@ connection_error_wait = 120
 search_page_error_wait = 600
 
 [DB]
-host = 192.168.109.140
+host = 192.168.109.142
 db = XenonData
 user = root
 passwd = xenon

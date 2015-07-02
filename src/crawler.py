@@ -72,6 +72,7 @@ class HttpOperation(Session):
 
         self.cookie_filename = cookie_filename
         self.__pre_sec_access = pre_sec_access
+
         # 使用锁来限制访问评论
         if pre_sec_access:
             self.LOCK = threading.Lock()

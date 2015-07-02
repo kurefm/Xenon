@@ -1,0 +1,4 @@
+- [pylucene](http://lucene.apache.org/pylucene/ '点击访问') 全文检索
+- [jieba](https://github.com/fxsjy/jieba '点击访问') 中文分词
+- [NLTK](http://www.nltk.org/ '点击访问') 自然语言学习
+- Weibo Rank 排序
